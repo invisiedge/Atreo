@@ -1,15 +1,33 @@
 const { Storage } = require('@google-cloud/storage');
 const path = require('path');
 
-const storage = new Storage({
-  projectId: process.env.GCS_PROJECT_ID,
-  credentials: {
-    client_email: process.env.GCS_CLIENT_EMAIL,
-    private_key: process.env.GCS_PRIVATE_KEY.replace(/\\n/g, '\n'),
-  },
-});
+// Only initialize GCS if all required environment variables are present
+const isGCSConfigured = 
+  process.env.GCS_PROJECT_ID && 
+  process.env.GCS_CLIENT_EMAIL && 
+  process.env.GCS_PRIVATE_KEY && 
+  process.env.GCS_BUCKET_NAME;
 
-const bucket = storage.bucket(process.env.GCS_BUCKET_NAME);
+let storage = null;
+let bucket = null;
+
+if (isGCSConfigured) {
+  try {
+    storage = new Storage({
+      projectId: process.env.GCS_PROJECT_ID,
+      credentials: {
+        client_email: process.env.GCS_CLIENT_EMAIL,
+        private_key: process.env.GCS_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      },
+    });
+    bucket = storage.bucket(process.env.GCS_BUCKET_NAME);
+  } catch (error) {
+    console.warn('⚠️  Failed to initialize Google Cloud Storage:', error.message);
+    console.warn('⚠️  File uploads will use local storage fallback');
+  }
+} else {
+  console.warn('⚠️  Google Cloud Storage not configured. File uploads will use local storage.');
+}
 
 /**
  * Uploads a file to Google Cloud Storage
@@ -18,6 +36,13 @@ const bucket = storage.bucket(process.env.GCS_BUCKET_NAME);
  * @returns {Promise<string>} - The public URL of the uploaded file
  */
 const uploadFile = async (file, destination) => {
+  if (!bucket) {
+    // Fallback to local storage or return a placeholder URL
+    console.warn('⚠️  GCS not configured, using local storage fallback');
+    // Return a local path - in production, you might want to use a different storage solution
+    return `/uploads/${destination}`;
+  }
+
   return new Promise((resolve, reject) => {
     const blob = bucket.file(destination);
     const blobStream = blob.createWriteStream({
@@ -48,6 +73,11 @@ const uploadFile = async (file, destination) => {
  * @param {string} fileName - The name/path of the file in the bucket
  */
 const deleteFile = async (fileName) => {
+  if (!bucket) {
+    console.warn('⚠️  GCS not configured, skipping file deletion');
+    return;
+  }
+
   try {
     await bucket.file(fileName).delete();
   } catch (error) {
@@ -64,6 +94,11 @@ const deleteFile = async (fileName) => {
 const getSignedUrl = async (fileUrl, expires = 15) => {
   try {
     if (!fileUrl) return null;
+
+    // If GCS is not configured, return the original URL
+    if (!bucket) {
+      return fileUrl;
+    }
 
     // Extract filename from URL if it's a full GCS URL
     let fileName = fileUrl;

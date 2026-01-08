@@ -3,10 +3,12 @@
  * Contains API configuration and endpoint definitions
  */
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-
 export const API_TIMEOUT = 30000; // 30 seconds
 export const AI_API_TIMEOUT = 120000; // 2 minutes for AI requests (they take longer)
+
+// Ensure API_BASE_URL always ends with /api for consistency
+const rawBaseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+export const API_BASE_URL = rawBaseURL.endsWith('/api') ? rawBaseURL : `${rawBaseURL}/api`;
 
 export const API_ENDPOINTS = {
   // Auth
