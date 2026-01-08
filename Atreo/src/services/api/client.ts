@@ -17,7 +17,10 @@ export class BaseApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${this.baseURL}${endpoint}`;
+    // Normalize URL construction - ensure no double slashes
+    const base = this.baseURL.endsWith('/') ? this.baseURL.slice(0, -1) : this.baseURL;
+    const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const url = `${base}${path}`;
 
     // Refresh token from localStorage for each request
     const currentToken = localStorage.getItem(STORAGE_KEYS.TOKEN);

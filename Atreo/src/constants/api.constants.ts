@@ -6,9 +6,38 @@
 export const API_TIMEOUT = 30000; // 30 seconds
 export const AI_API_TIMEOUT = 120000; // 2 minutes for AI requests (they take longer)
 
-// Ensure API_BASE_URL always ends with /api for consistency
+// Ensure API_BASE_URL is a valid absolute URL with protocol and /api suffix
 const rawBaseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-export const API_BASE_URL = rawBaseURL.endsWith('/api') ? rawBaseURL : `${rawBaseURL}/api`;
+
+// Add protocol if missing (assume https for production, http for localhost)
+let normalizedURL = rawBaseURL.trim();
+
+// Remove trailing slashes first
+normalizedURL = normalizedURL.replace(/\/+$/, '');
+
+if (!normalizedURL.startsWith('http://') && !normalizedURL.startsWith('https://')) {
+  // If no protocol, add https:// (or http:// for localhost)
+  if (normalizedURL.includes('localhost') || normalizedURL.includes('127.0.0.1')) {
+    normalizedURL = `http://${normalizedURL}`;
+  } else {
+    normalizedURL = `https://${normalizedURL}`;
+  }
+}
+
+// Ensure it ends with /api (but not /api/)
+export const API_BASE_URL = normalizedURL.endsWith('/api') 
+  ? normalizedURL 
+  : normalizedURL.endsWith('/api/')
+  ? normalizedURL.slice(0, -1)
+  : `${normalizedURL}/api`;
+
+// Log in both development and production to help debug
+console.log('🔧 API Configuration:', {
+  API_BASE_URL,
+  VITE_API_BASE_URL: import.meta.env.VITE_API_BASE_URL || '(not set)',
+  isProduction: import.meta.env.PROD,
+  isDevelopment: import.meta.env.DEV
+});
 
 export const API_ENDPOINTS = {
   // Auth

@@ -94,6 +94,32 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
+// Clear all invoices (admin only) - MUST be before /:id routes
+router.delete('/clear-all', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    // Delete all invoices (excluding employee/contractor invoices which are in payments)
+    const result = await Invoice.deleteMany({
+      $or: [
+        { 'notes.type': { $ne: 'employee_contractor' } },
+        { 'notes.type': { $exists: false } },
+        { notes: null }
+      ]
+    });
+
+    res.json({ 
+      message: `Successfully cleared ${result.deletedCount} invoice(s)`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('Error clearing all invoices:', error);
+    res.status(500).json({ message: 'Failed to clear invoices' });
+  }
+});
+
 // Get summary
 router.get('/summary', authenticateToken, async (req, res) => {
   try {

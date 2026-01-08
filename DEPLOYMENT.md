@@ -167,10 +167,21 @@ FRONTEND_URL=https://atreo.vercel.app
 
 ### 2. Update Frontend API URL
 
-In Vercel, set `VITE_API_BASE_URL` to your Railway URL:
+In Vercel, set `VITE_API_BASE_URL` to your Railway URL. You can use either format:
+
+**Option 1 (Recommended - Full URL with /api):**
 ```
 VITE_API_BASE_URL=https://your-app-name.up.railway.app/api
 ```
+
+**Option 2 (Just the domain - protocol will be added automatically):**
+```
+VITE_API_BASE_URL=your-app-name.up.railway.app/api
+```
+
+**Note:** The code will automatically:
+- Add `https://` protocol if missing (or `http://` for localhost)
+- Ensure the URL ends with `/api`
 
 ### 3. Test Connection
 

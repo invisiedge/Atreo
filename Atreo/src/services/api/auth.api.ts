@@ -36,21 +36,21 @@ export class AuthApi extends BaseApiClient {
 
   async logout(): Promise<void> {
     try {
-      await this.request('/api/auth/logout', { method: 'POST' });
+      await this.request('/auth/logout', { method: 'POST' });
     } finally {
       localStorage.removeItem(STORAGE_KEYS.TOKEN);
     }
   }
 
   async resetPassword(data: { currentPassword: string; newPassword: string }): Promise<{ message: string }> {
-    return this.request<{ message: string }>('/api/auth/reset-password', {
+    return this.request<{ message: string }>('/auth/reset-password', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
   async getCurrentUser(): Promise<User> {
-    const response = await this.request<{ user: User }>('/api/auth/me');
+    const response = await this.request<{ user: User }>('/auth/me');
     return response.user;
   }
 }
