@@ -1,0 +1,26 @@
+test
+{"location":"server.js:18","message":"Server startup - checking JWT_SECRET","data":{"jwtSecretExists":true,"jwtSecretLength":64},"timestamp":1767807290483,"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}
+{"location":"config/database.js:9","message":"Database connection attempt start","data":{"hasMongoUri":true},"timestamp":1767807291003,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:25","message":"Database connection successful","data":{"host":"localhost","readyState":1},"timestamp":1767807291018,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"server.js:26","message":"Database connection successful","data":{"connected":true},"timestamp":1767807291019,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"server.js:18","message":"Server startup - checking JWT_SECRET","data":{"jwtSecretExists":true,"jwtSecretLength":64},"timestamp":1767808392326,"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}
+{"location":"config/database.js:9","message":"Database connection attempt start","data":{"hasMongoUri":true},"timestamp":1767808392829,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:25","message":"Database connection successful","data":{"host":"localhost","readyState":1},"timestamp":1767808392864,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"server.js:26","message":"Database connection successful","data":{"connected":true},"timestamp":1767808392864,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"server.js:18","message":"Server startup - checking JWT_SECRET","data":{"jwtSecretExists":true,"jwtSecretLength":64},"timestamp":1767808623604,"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}
+{"location":"server.js:18","message":"Server startup - checking JWT_SECRET","data":{"jwtSecretExists":true,"jwtSecretLength":64},"timestamp":1767808623706,"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}
+{"location":"config/database.js:9","message":"Database connection attempt start","data":{"hasMongoUri":true},"timestamp":1767808624137,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:25","message":"Database connection successful","data":{"host":"localhost","readyState":1},"timestamp":1767808624148,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"server.js:26","message":"Database connection successful","data":{"connected":true},"timestamp":1767808624148,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:9","message":"Database connection attempt start","data":{"hasMongoUri":true},"timestamp":1767808634242,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:25","message":"Database connection successful","data":{"host":"localhost","readyState":1},"timestamp":1767808634254,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:9","message":"Database connection attempt start","data":{"hasMongoUri":true},"timestamp":1767808636948,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:25","message":"Database connection successful","data":{"host":"localhost","readyState":1},"timestamp":1767808636967,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:9","message":"Database connection attempt start","data":{"hasMongoUri":true},"timestamp":1767808640344,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:25","message":"Database connection successful","data":{"host":"localhost","readyState":1},"timestamp":1767808640362,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:9","message":"Database connection attempt start","data":{"hasMongoUri":true},"timestamp":1767808643268,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:25","message":"Database connection successful","data":{"host":"localhost","readyState":1},"timestamp":1767808643285,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:9","message":"Database connection attempt start","data":{"hasMongoUri":true},"timestamp":1767808646273,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:25","message":"Database connection successful","data":{"host":"localhost","readyState":1},"timestamp":1767808646285,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:9","message":"Database connection attempt start","data":{"hasMongoUri":true},"timestamp":1767808663199,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"config/database.js:25","message":"Database connection successful","data":{"host":"localhost","readyState":1},"timestamp":1767808663213,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
