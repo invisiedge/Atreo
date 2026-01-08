@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { logger } from '../../lib/logger';
 import { apiClient } from '../../services/api';
 import { useToast } from '../../hooks/useToast';
+import type { AuditLog } from '../../services/api/logs.api';
 
 interface LogEntry {
   id: string;
@@ -20,6 +21,8 @@ interface LogEntry {
   user?: string;
   ipAddress?: string;
   action: string;
+  status?: 'success' | 'failure' | 'error';
+  errorMessage?: string;
 }
 
 export default function AdminLogs() {
@@ -69,7 +72,7 @@ export default function AdminLogs() {
       const response = await apiClient.getLogs(filters);
       
       // Map status to level
-      const mapStatusToLevel = (status: string): 'info' | 'warning' | 'error' | 'success' => {
+      const mapStatusToLevel = (status?: string): 'info' | 'warning' | 'error' | 'success' => {
         switch (status) {
           case 'error':
           case 'failure':
@@ -81,15 +84,17 @@ export default function AdminLogs() {
         }
       };
       
-      const normalizedLogs: LogEntry[] = response.logs.map((log) => ({
+      const normalizedLogs: LogEntry[] = response.logs.map((log: AuditLog) => ({
         id: log.id,
         timestamp: log.timestamp,
         level: mapStatusToLevel(log.status || 'success'),
-        category: log.resourceType || 'general',
+        category: log.resource || log.resourceType || 'general',
         message: log.details?.message || log.action || '',
         user: log.user?.name || log.user?.email || 'System',
         ipAddress: log.ipAddress || '',
         action: log.action,
+        status: log.status,
+        errorMessage: log.errorMessage,
       }));
       
       setLogs(normalizedLogs);
@@ -107,7 +112,7 @@ export default function AdminLogs() {
       // Export all logs (with current filters)
       const filters: any = { 
         limit: 10000, // Large limit for export
-        resourceType: filterCategory !== 'all' ? filterCategory : undefined,
+        resource: filterCategory !== 'all' ? filterCategory : undefined,
         status: filterLevel !== 'all' ? filterLevel : undefined,
         search: searchQuery || undefined
       };
@@ -116,13 +121,13 @@ export default function AdminLogs() {
       
       // Convert to CSV
       const headers = ['Timestamp', 'Level', 'Category', 'Action', 'User', 'IP Address', 'Message'];
-      const rows = response.logs.map(log => {
+      const rows = response.logs.map((log: AuditLog) => {
         const level = log.status === 'error' || log.status === 'failure' ? 'Error' : 
                      log.status === 'success' ? 'Success' : 'Info';
         return [
           new Date(log.timestamp).toISOString(),
           level,
-          log.resourceType || 'general',
+          log.resource || log.resourceType || 'general',
           log.action,
           log.user?.name || log.user?.email || 'System',
           log.ipAddress || '',

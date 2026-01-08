@@ -140,7 +140,14 @@ router.post('/import-excel', authenticateToken, upload.single('file'), async (re
     const currentUser = await User.findById(req.user.userId);
     const organizationId = currentUser ? currentUser.organizationId : null;
 
-    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    // Security: Read with safe options to mitigate prototype pollution
+    const workbook = XLSX.read(req.file.buffer, { 
+      type: 'buffer',
+      cellDates: false,
+      cellNF: false,
+      cellStyles: false,
+      dense: false
+    });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
     

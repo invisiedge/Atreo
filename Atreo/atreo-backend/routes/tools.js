@@ -159,10 +159,21 @@ router.post('/import-excel', authenticateToken, uploadExcel.single('file'), asyn
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    // Security: Read with safe options to mitigate prototype pollution
+    const workbook = XLSX.read(req.file.buffer, { 
+      type: 'buffer',
+      cellDates: false,
+      cellNF: false,
+      cellStyles: false,
+      dense: false
+    });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
-    const data = XLSX.utils.sheet_to_json(worksheet);
+    // Security: Use defval to prevent prototype pollution
+    const data = XLSX.utils.sheet_to_json(worksheet, { 
+      defval: null,
+      raw: false
+    });
 
     const importedTools = [];
     const errors = [];

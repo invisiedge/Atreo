@@ -14,12 +14,15 @@ export interface AuditLog {
     email: string;
     role?: string;
   } | null;
-  resourceType: string;
+  resource: string;
+  resourceType?: string; // Legacy field, use 'resource' instead
   resourceId: string;
   details: Record<string, any>;
   ipAddress: string;
   userAgent: string;
   timestamp: string;
+  status?: 'success' | 'failure' | 'error';
+  errorMessage?: string;
 }
 
 export interface LogsResponse {

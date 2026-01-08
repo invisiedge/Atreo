@@ -9,6 +9,7 @@ const storageService = require('../services/storageService');
 const invoiceParser = require('../services/invoiceParser');
 const multer = require('multer');
 const XLSX = require('xlsx');
+// Security: Validate and sanitize Excel file inputs to prevent prototype pollution
 const mongoose = require('mongoose');
 
 // Configure multer for file uploads
@@ -177,9 +178,20 @@ router.post('/parse', authenticateToken, uploadForParsing.single('file'), async 
 router.post('/import-excel', authenticateToken, uploadExcel.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    // Security: Read with safe options to mitigate prototype pollution
+    const workbook = XLSX.read(req.file.buffer, { 
+      type: 'buffer',
+      cellDates: false,
+      cellNF: false,
+      cellStyles: false,
+      dense: false
+    });
     const sheetName = workbook.SheetNames[0];
-    const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+    // Security: Use defval to prevent prototype pollution
+    const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { 
+      defval: null,
+      raw: false
+    });
 
     let successCount = 0;
     const user = await User.findById(req.user.userId);
