@@ -13,9 +13,9 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
-    // Load saved theme from localStorage or default to 'system'
+    // Load saved theme from localStorage or default to 'light'
     const savedTheme = localStorage.getItem('atreo_theme') as Theme;
-    return savedTheme || 'system';
+    return savedTheme || 'light';
   });
 
   const [effectiveTheme, setEffectiveTheme] = useState<'light' | 'dark'>('light');

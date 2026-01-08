@@ -1659,7 +1659,8 @@ export default function AdminInvoices() {
                           provider: '',
                           billingDate: '',
                           dueDate: '',
-                          category: ''
+                          category: '',
+                          organizationId: ''
                         });
                       }}
                       className="px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-md hover:bg-accent transition-colors"

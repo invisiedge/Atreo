@@ -251,24 +251,7 @@ router.post('/import-excel', authenticateToken, uploadExcel.single('file'), asyn
   }
 });
 
-// Get single invoice
-router.get('/:id', authenticateToken, async (req, res) => {
-  try {
-    const invoice = await Invoice.findById(req.params.id)
-      .populate('uploadedBy', 'name email')
-      .populate('approvedBy', 'name email')
-      .populate('organizationId', 'name domain')
-      .populate('toolIds', 'name category');
-
-    if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
-    res.json(invoice);
-  } catch (error) {
-    console.error('Error fetching invoice:', error);
-    res.status(500).json({ message: 'Failed to fetch invoice' });
-  }
-});
-
-// Get invoice download URL
+// Get invoice download URL - MUST be before /:id route
 router.get('/:id/download', authenticateToken, async (req, res) => {
   try {
     const invoice = await Invoice.findById(req.params.id);
@@ -288,6 +271,23 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error getting download URL:', error);
     res.status(500).json({ message: 'Failed to get download URL' });
+  }
+});
+
+// Get single invoice
+router.get('/:id', authenticateToken, async (req, res) => {
+  try {
+    const invoice = await Invoice.findById(req.params.id)
+      .populate('uploadedBy', 'name email')
+      .populate('approvedBy', 'name email')
+      .populate('organizationId', 'name domain')
+      .populate('toolIds', 'name category');
+
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+    res.json(invoice);
+  } catch (error) {
+    console.error('Error fetching invoice:', error);
+    res.status(500).json({ message: 'Failed to fetch invoice' });
   }
 });
 
@@ -331,7 +331,7 @@ router.post('/', authenticateToken, uploadForParsing.single('file'), async (req,
   }
 });
 
-// Update invoice
+// Update invoice - MUST be before GET /:id routes to ensure proper route matching
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { invoiceNumber, amount, provider, billingDate, dueDate, category, organizationId, toolIds, currency, status } = req.body;
