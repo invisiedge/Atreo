@@ -22,9 +22,9 @@ export default function InvoiceSummaryCards({ summary, loading }: InvoiceSummary
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {[...Array(5)].map((_, index) => (
-          <Skeleton key={index} className="h-48 w-full rounded-[2.5rem]" />
+          <Skeleton key={index} className="h-32 w-full rounded-2xl" />
         ))}
       </div>
     );
@@ -39,7 +39,7 @@ export default function InvoiceSummaryCards({ summary, loading }: InvoiceSummary
       title: 'Total Invoices',
       value: summary.totalInvoices.toLocaleString(),
       subtitle: `Total volume: ${formatCurrency(summary.totalAmount)}`,
-      icon: <FiFileText className="w-6 h-6 text-white" />,
+      icon: <FiFileText className="w-4 h-4 text-white" />,
       color: 'from-purple-600 to-indigo-700',
       growth: '+12%' // Dummy growth as it's not in the summary object yet
     },
@@ -47,7 +47,7 @@ export default function InvoiceSummaryCards({ summary, loading }: InvoiceSummary
       title: 'Pending',
       value: summary.pendingInvoices.toLocaleString(),
       subtitle: `Awaiting: ${formatCurrency(summary.pendingAmount)}`,
-      icon: <FiClock className="w-6 h-6 text-white" />,
+      icon: <FiClock className="w-4 h-4 text-white" />,
       color: 'from-blue-500 to-cyan-600',
       growth: '+5%'
     },
@@ -55,7 +55,7 @@ export default function InvoiceSummaryCards({ summary, loading }: InvoiceSummary
       title: 'Approved',
       value: summary.approvedInvoices.toLocaleString(),
       subtitle: `Processed: ${formatCurrency(summary.approvedAmount)}`,
-      icon: <FiCheckCircle className="w-6 h-6 text-white" />,
+      icon: <FiCheckCircle className="w-4 h-4 text-white" />,
       color: 'from-emerald-500 to-green-600',
       growth: '+8%'
     },
@@ -63,7 +63,7 @@ export default function InvoiceSummaryCards({ summary, loading }: InvoiceSummary
       title: 'Rejected',
       value: summary.rejectedInvoices.toLocaleString(),
       subtitle: `Flagged: ${formatCurrency(summary.rejectedAmount)}`,
-      icon: <FiXCircle className="w-6 h-6 text-white" />,
+      icon: <FiXCircle className="w-4 h-4 text-white" />,
       color: 'from-rose-500 to-red-600',
       growth: '-2%'
     },
@@ -71,14 +71,14 @@ export default function InvoiceSummaryCards({ summary, loading }: InvoiceSummary
       title: 'Avg. Amount',
       value: formatCurrency(summary.averageInvoiceAmount),
       subtitle: 'Average per invoice',
-      icon: <FiDollarSign className="w-6 h-6 text-white" />,
+      icon: <FiDollarSign className="w-4 h-4 text-white" />,
       color: 'from-orange-500 to-amber-600',
       growth: '+3%'
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
       {cards.map((card, index) => (
         <SummaryCard
           key={index}

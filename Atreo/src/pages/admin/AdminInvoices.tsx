@@ -38,7 +38,7 @@ export default function AdminInvoices() {
     startDate: '',
     endDate: ''
   });
-  const [sortBy, setSortBy] = useState<'billingDate' | 'amount' | 'provider' | 'status' | 'invoiceNumber'>('billingDate');
+  const [sortBy, setSortBy] = useState<'billingDate' | 'amount' | 'provider' | 'status' | 'invoiceNumber' | 'organizationName'>('billingDate');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingInvoice, setDeletingInvoice] = useState<Invoice | null>(null);
@@ -53,7 +53,8 @@ export default function AdminInvoices() {
     provider: '',
     billingDate: '',
     dueDate: '',
-    category: ''
+    category: '',
+    organizationId: ''
   });
   const [createFormData, setCreateFormData] = useState({
     invoiceNumber: '',
@@ -210,7 +211,8 @@ export default function AdminInvoices() {
       provider: invoice.provider || '',
       billingDate: formatDateForInput(invoice.billingDate),
       dueDate: formatDateForInput(invoice.dueDate),
-      category: invoice.category || ''
+      category: invoice.category || '',
+      organizationId: invoice.organizationId || ''
     });
     setShowEditModal(true);
   };
@@ -241,7 +243,8 @@ export default function AdminInvoices() {
         provider: editFormData.provider,
         billingDate: editFormData.billingDate,
         dueDate: editFormData.dueDate || undefined,
-        category: editFormData.category || undefined
+        category: editFormData.category || undefined,
+        organizationId: editFormData.organizationId || undefined
       });
 
       showToast('Invoice updated successfully!', 'success');
@@ -253,7 +256,8 @@ export default function AdminInvoices() {
         provider: '',
         billingDate: '',
         dueDate: '',
-        category: ''
+        category: '',
+        organizationId: ''
       });
       loadInvoices(false);
     } catch (error: any) {
@@ -507,6 +511,10 @@ export default function AdminInvoices() {
           aVal = a.invoiceNumber?.toLowerCase() || '';
           bVal = b.invoiceNumber?.toLowerCase() || '';
           break;
+        case 'organizationName':
+          aVal = (a.organization?.name || '').toLowerCase();
+          bVal = (b.organization?.name || '').toLowerCase();
+          break;
         default:
           aVal = new Date(a.billingDate).getTime();
           bVal = new Date(b.billingDate).getTime();
@@ -726,6 +734,7 @@ export default function AdminInvoices() {
               <option value="provider">Provider</option>
               <option value="status">Status</option>
               <option value="invoiceNumber">Invoice #</option>
+              <option value="organizationName">Name</option>
             </select>
             <button
               onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
@@ -1502,7 +1511,8 @@ export default function AdminInvoices() {
                           provider: '',
                           billingDate: '',
                           dueDate: '',
-                          category: ''
+                          category: '',
+                          organizationId: ''
                         });
                       }}
                       className="text-muted-foreground hover:text-foreground"
@@ -1512,6 +1522,27 @@ export default function AdminInvoices() {
                   </div>
 
                   <div className="space-y-4">
+                    {isAdmin && organizations.length > 0 && (
+                      <div>
+                        <label htmlFor="edit-organizationId" className="block text-sm font-medium text-foreground mb-2">
+                          Organization
+                        </label>
+                        <select
+                          id="edit-organizationId"
+                          value={editFormData.organizationId}
+                          onChange={(e) => setEditFormData({ ...editFormData, organizationId: e.target.value })}
+                          className="block w-full rounded-md border-border shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border"
+                        >
+                          <option value="">Select Organization (optional)</option>
+                          {organizations.map((org) => (
+                            <option key={org.id} value={org.id}>
+                              {org.name} ({org.domain})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
                     <div>
                       <label htmlFor="edit-invoiceNumber" className="block text-sm font-medium text-foreground mb-2">
                         Invoice Number <span className="text-red-500">*</span>

@@ -331,6 +331,64 @@ router.post('/', authenticateToken, uploadForParsing.single('file'), async (req,
   }
 });
 
+// Update invoice
+router.put('/:id', authenticateToken, async (req, res) => {
+  try {
+    const { invoiceNumber, amount, provider, billingDate, dueDate, category, organizationId, toolIds, currency, status } = req.body;
+    
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) {
+      return res.status(404).json({ message: 'Invoice not found' });
+    }
+
+    // Check permissions - admin can update any invoice, users can only update their own
+    if (req.user.role !== 'admin' && invoice.uploadedBy.toString() !== req.user.userId) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Build update object
+    const updateData = {};
+    if (invoiceNumber !== undefined) updateData.invoiceNumber = invoiceNumber;
+    if (amount !== undefined) updateData.amount = parseFloat(amount);
+    if (currency !== undefined) updateData.currency = currency;
+    if (provider !== undefined) updateData.provider = provider;
+    if (billingDate !== undefined) updateData.billingDate = new Date(billingDate);
+    if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
+    if (category !== undefined) updateData.category = category;
+    if (organizationId !== undefined) updateData.organizationId = organizationId;
+    if (toolIds !== undefined) {
+      updateData.toolIds = Array.isArray(toolIds) ? toolIds : (toolIds ? [toolIds] : []);
+    }
+    
+    // Only admins can update status
+    if (status !== undefined && req.user.role === 'admin') {
+      updateData.status = status;
+      if (status === 'approved') {
+        updateData.approvedBy = req.user.userId;
+        updateData.approvedAt = new Date();
+      }
+      if (status === 'rejected') {
+        updateData.rejectedAt = new Date();
+      }
+    }
+
+    const updatedInvoice = await Invoice.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }
+    )
+      .populate('uploadedBy', 'name email')
+      .populate('approvedBy', 'name email')
+      .populate('organizationId', 'name domain')
+      .populate('toolIds', 'name category');
+
+    res.json(updatedInvoice);
+  } catch (error) {
+    console.error('Error updating invoice:', error);
+    res.status(500).json({ message: 'Failed to update invoice' });
+  }
+});
+
 // Update status
 router.post('/:id/approve', authenticateToken, async (req, res) => {
   try {

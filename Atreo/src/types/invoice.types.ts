@@ -63,6 +63,7 @@ export interface UpdateInvoiceRequest {
   billingDate?: string;
   dueDate?: string;
   category?: string;
+  organizationId?: string;
 }
 
 export interface InvoiceSummary {

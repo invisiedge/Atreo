@@ -330,6 +330,12 @@ router.post('/ask', authenticateToken, async (req, res) => {
     const pendingInvoices = allInvoices.filter(inv => inv.status === 'pending');
     const pendingAmount = pendingInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
     
+    // Helper function to safely format numbers
+    const safeToFixed = (value, decimals = 2) => {
+      if (value === null || value === undefined || isNaN(value)) return '0.00';
+      return Number(value).toFixed(decimals);
+    };
+
     let context = `=== COMPREHENSIVE ATREO DATABASE INTELLIGENCE ===
 
 📊 SYSTEM OVERVIEW:
@@ -337,47 +343,47 @@ router.post('/ask', authenticateToken, async (req, res) => {
 - Total Employees: ${employees.length} (Active: ${employees.filter(e => e.status === 'active').length})
 - Total Tools: ${totalTools} (Active: ${activeTools}, Inactive: ${totalTools - activeTools})
 - Paid Tools: ${paidTools.length} | Free Tools: ${totalTools - paidTools.length}
-- Total Invoices: ${totalInvoices} | Total Invoice Amount: $${totalInvoiceAmount.toFixed(2)}
-- Approved Invoices: ${approvedInvoices.length} ($${approvedAmount.toFixed(2)})
-- Pending Invoices: ${pendingInvoices.length} ($${pendingAmount.toFixed(2)})
+- Total Invoices: ${totalInvoices} | Total Invoice Amount: $${safeToFixed(totalInvoiceAmount)}
+- Approved Invoices: ${approvedInvoices.length} ($${safeToFixed(approvedAmount)})
+- Pending Invoices: ${pendingInvoices.length} ($${safeToFixed(pendingAmount)})
 - Total Assets: ${assets.length} | Total Domains: ${domains.length}
 - Total Organizations: ${organizations.length}
-- Monthly Tools Spend (Recurring): $${totalMonthlyToolsSpend.toFixed(2)}
+- Monthly Tools Spend (Recurring): $${safeToFixed(totalMonthlyToolsSpend)}
 - Total Submissions: ${submissions.length} (Pending: ${submissions.filter(s => s.status === 'pending').length}, Approved: ${submissions.filter(s => s.status === 'approved').length})
 
 💰 FINANCIAL ANALYSIS:
 
 TOOL SPENDING BREAKDOWN:
-${toolCategories.map((cat, idx) => `${idx + 1}. ${cat._id || 'Uncategorized'}: ${cat.count} tools, ${cat.paidCount} paid, Monthly Spend: $${cat.totalMonthlySpend.toFixed(2)}`).join('\n')}
+${toolCategories.map((cat, idx) => `${idx + 1}. ${cat._id || 'Uncategorized'}: ${cat.count} tools, ${cat.paidCount} paid, Monthly Spend: $${safeToFixed(cat.totalMonthlySpend)}`).join('\n')}
 
 TOP SPENDING TOOLS (Monthly):
-${topSpendingTools.slice(0, 10).map((tool, idx) => `${idx + 1}. ${tool.name} (${tool.category || 'N/A'}): $${tool.monthlySpend.toFixed(2)}/${tool.billingPeriod || 'month'}`).join('\n')}
+${topSpendingTools.slice(0, 10).map((tool, idx) => `${idx + 1}. ${tool.name} (${tool.category || 'N/A'}): $${safeToFixed(tool.monthlySpend)}/${tool.billingPeriod || 'month'}`).join('\n')}
 
 TOOL STATUS DISTRIBUTION:
 ${toolStatusData.map((s, idx) => `${idx + 1}. ${s._id || 'Unknown'}: ${s.count} tools`).join('\n')}
 
 BILLING PERIOD DISTRIBUTION:
-${billingPeriodData.map((b, idx) => `${idx + 1}. ${b._id || 'Unknown'}: ${b.count} tools, Monthly Equivalent: $${b.totalSpend.toFixed(2)}`).join('\n')}
+${billingPeriodData.map((b, idx) => `${idx + 1}. ${b._id || 'Unknown'}: ${b.count} tools, Monthly Equivalent: $${safeToFixed(b.totalSpend)}`).join('\n')}
 
 INVOICE ANALYSIS:
 
 INVOICE STATUS BREAKDOWN:
-${invoiceStatusData.map((status, idx) => `${idx + 1}. ${status._id}: ${status.count} invoices, Total: $${status.totalAmount.toFixed(2)}, Avg: $${status.avgAmount.toFixed(2)}`).join('\n')}
+${invoiceStatusData.map((status, idx) => `${idx + 1}. ${status._id}: ${status.count} invoices, Total: $${safeToFixed(status.totalAmount)}, Avg: $${safeToFixed(status.avgAmount)}`).join('\n')}
 
 TOP INVOICE PROVIDERS (by Total Amount):
-${topProviders.map((p, idx) => `${idx + 1}. ${p._id || 'Unknown'}: ${p.count} invoices, Total: $${p.totalAmount.toFixed(2)}`).join('\n')}
+${topProviders.map((p, idx) => `${idx + 1}. ${p._id || 'Unknown'}: ${p.count} invoices, Total: $${safeToFixed(p.totalAmount)}`).join('\n')}
 
 INVOICE CATEGORIES:
-${invoiceCategories.map((cat, idx) => `${idx + 1}. ${cat._id || 'Uncategorized'}: ${cat.count} invoices, Total: $${cat.totalAmount.toFixed(2)}`).join('\n')}
+${invoiceCategories.map((cat, idx) => `${idx + 1}. ${cat._id || 'Uncategorized'}: ${cat.count} invoices, Total: $${safeToFixed(cat.totalAmount)}`).join('\n')}
 
 MONTHLY INVOICE TRENDS (Last 6 Months):
-${monthlyInvoiceData.slice(0, 6).map((m, idx) => `${idx + 1}. ${m._id.year}-${String(m._id.month).padStart(2, '0')}: ${m.count} invoices, Total: $${m.totalAmount.toFixed(2)}`).join('\n')}
+${monthlyInvoiceData.slice(0, 6).map((m, idx) => `${idx + 1}. ${m._id.year}-${String(m._id.month).padStart(2, '0')}: ${m.count} invoices, Total: $${safeToFixed(m.totalAmount)}`).join('\n')}
 
 INVOICE TRENDS OVER TIME (Last 6 Months):
-${invoiceTrends.slice(0, 6).map((t, idx) => `${idx + 1}. ${t._id.year}-${String(t._id.month).padStart(2, '0')}: ${t.count} invoices, $${t.totalAmount.toFixed(2)} total`).join('\n')}
+${invoiceTrends.slice(0, 6).map((t, idx) => `${idx + 1}. ${t._id.year}-${String(t._id.month).padStart(2, '0')}: ${t.count} invoices, $${safeToFixed(t.totalAmount)} total`).join('\n')}
 
 RECENT INVOICES (Last 50):
-${allInvoices.slice(0, 50).map((inv, idx) => `${idx + 1}. #${inv.invoiceNumber} - ${inv.provider || 'N/A'}: ${inv.currency || 'USD'} ${inv.amount.toFixed(2)} (${new Date(inv.billingDate).toLocaleDateString()}) - ${inv.status}${inv.category ? ` [${inv.category}]` : ''}`).join('\n')}
+${allInvoices.slice(0, 50).map((inv, idx) => `${idx + 1}. #${inv.invoiceNumber || 'N/A'} - ${inv.provider || 'N/A'}: ${inv.currency || 'USD'} ${safeToFixed(inv.amount)} (${inv.billingDate ? new Date(inv.billingDate).toLocaleDateString() : 'N/A'}) - ${inv.status || 'N/A'}${inv.category ? ` [${inv.category}]` : ''}`).join('\n')}
 
 🔧 TOOL INVENTORY:
 
@@ -418,7 +424,7 @@ EMPLOYEES (${employees.length} total, showing ${Math.min(employees.length, 30)})
 ${employees.slice(0, 30).map((emp, idx) => `${idx + 1}. ${emp.name} - ${emp.position || 'N/A'}, ${emp.status}`).join('\n')}
 
 RECENT SUBMISSIONS (Last 20):
-${submissions.map((sub, idx) => `${idx + 1}. ${sub.employeeName}: $${sub.totalAmount.toFixed(2)} - ${sub.status}`).join('\n')}
+${submissions.map((sub, idx) => `${idx + 1}. ${sub.employeeName || 'N/A'}: $${safeToFixed(sub.totalAmount)} - ${sub.status || 'N/A'}`).join('\n')}
 
 📦 ASSETS & DOMAINS:
 
@@ -429,7 +435,7 @@ DOMAINS (${domains.length} total, showing ${Math.min(domains.length, 20)}):
 ${domains.slice(0, 20).map((dom, idx) => `${idx + 1}. ${dom.domainName} (${dom.provider}) - ${dom.status}`).join('\n')}
 
 💳 PAYMENTS (Recent 30):
-${payments.map((p, idx) => `${idx + 1}. ${p.currency || 'USD'} ${p.amount.toFixed(2)} to ${p.provider || 'N/A'} - ${p.status}`).join('\n')}
+${payments.map((p, idx) => `${idx + 1}. ${p.currency || 'USD'} ${safeToFixed(p.amount)} to ${p.provider || 'N/A'} - ${p.status || 'N/A'}`).join('\n')}
 
 🏢 ORGANIZATIONS (${organizations.length} total, showing ${Math.min(organizations.length, 20)}):
 ${organizations.slice(0, 20).map((org, idx) => `${idx + 1}. ${org.name}`).join('\n')}
