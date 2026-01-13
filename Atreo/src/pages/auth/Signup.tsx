@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FiEye, FiEyeOff, FiUserPlus, FiArrowLeft, FiUser, FiShield } from 'react-icons/fi';
+import { FiEye, FiEyeOff, FiUserPlus, FiArrowLeft, FiUser, FiShield, FiDollarSign } from 'react-icons/fi';
 import { apiClient } from '../../services/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +18,7 @@ const Signup: React.FC<SignupProps> = ({ onBackToLogin, onSignupSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState<'user' | 'admin'>('user');
+  const [role, setRole] = useState<'user' | 'admin' | 'accountant'>('user');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -121,7 +121,7 @@ const Signup: React.FC<SignupProps> = ({ onBackToLogin, onSignupSuccess }) => {
 
               <div className="space-y-2">
                 <Label>Account Type</Label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <button
                     type="button"
                     onClick={() => setRole('user')}
@@ -133,6 +133,18 @@ const Signup: React.FC<SignupProps> = ({ onBackToLogin, onSignupSuccess }) => {
                   >
                     <FiUser className="h-4 w-4" />
                     <span className="font-medium">User</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRole('accountant')}
+                    className={`flex items-center justify-center gap-2 p-3 rounded-md border-2 transition-all ${
+                      role === 'accountant'
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-card hover:border-primary/50'
+                    }`}
+                  >
+                    <FiDollarSign className="h-4 w-4" />
+                    <span className="font-medium">Accountant</span>
                   </button>
                   <button
                     type="button"

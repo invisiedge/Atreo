@@ -40,4 +40,37 @@ export class EmployeeApi extends BaseApiClient {
     }
     return employee;
   }
+
+  /**
+   * Upload a document for an employee
+   * @param employeeId - Employee ID
+   * @param documentType - Type of document (resume, offerLetter, employeeAgreement, nda, govtId, passport, addressProof, pan, taxId)
+   * @param file - File to upload
+   */
+  async uploadDocument(employeeId: string, documentType: string, file: File): Promise<{ message: string; documentType: string; fileUrl: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    return this.request<{ message: string; documentType: string; fileUrl: string }>(
+      `/employees/${employeeId}/documents/${documentType}`,
+      {
+        method: 'POST',
+        body: formData,
+      }
+    );
+  }
+
+  /**
+   * Delete a document from an employee's profile
+   * @param employeeId - Employee ID
+   * @param documentType - Type of document to delete
+   */
+  async deleteDocument(employeeId: string, documentType: string): Promise<{ message: string; documentType: string }> {
+    return this.request<{ message: string; documentType: string }>(
+      `/employees/${employeeId}/documents/${documentType}`,
+      {
+        method: 'DELETE',
+      }
+    );
+  }
 }

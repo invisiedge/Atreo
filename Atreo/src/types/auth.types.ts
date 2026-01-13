@@ -17,7 +17,7 @@ export interface SignupRequest {
   name: string;
   email: string;
   password: string;
-  role?: 'admin' | 'user';
+  role?: "admin" | "user" | "accountant";
 }
 
 export interface SignupResponse {
@@ -30,9 +30,9 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'user';
+  role: "admin" | "user" | "accountant";
   employeeId?: string;
-  adminRole?: 'admin' | 'super-admin';
+  adminRole?: "admin" | "super-admin";
   permissions?: string[];
   isActive?: boolean;
   phone?: string;

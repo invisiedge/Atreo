@@ -14,6 +14,18 @@ const toolSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  project: {
+    type: String,
+    trim: true
+  },
+  department: {
+    type: String,
+    trim: true
+  },
+  client: {
+    type: String,
+    trim: true
+  },
   username: {
     type: String,
     trim: true

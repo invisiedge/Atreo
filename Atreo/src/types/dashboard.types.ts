@@ -44,9 +44,40 @@ export interface DashboardStats {
 }
 
 export interface UserDashboardStats {
-  totalEarnings: number;
-  pendingRequests: number;
-  approvedRequests: number;
+  // Credential Management
+  credentials: {
+    total: number;
+    active: number;
+    inactive: number;
+    byCategory: Array<{ name: string; count: number }>;
+    byProject: Array<{ name: string; count: number }>;
+    byDepartment: Array<{ name: string; count: number }>;
+  };
+
+  // Sharing Stats
+  sharing: {
+    sharedWithMe: number;
+    sharedByMe: number;
+  };
+
+  // Spend Analytics
+  spending: {
+    total: number;
+    monthly: Array<{ month: string; amount: number }>;
+    byVendor: Array<{ vendor: string; amount: number; count: number }>;
+    byCategory: Array<{ category: string; amount: number; count: number }>;
+    byProject: Array<{ project: string; amount: number; count: number }>;
+  };
+
+  // Recent Activity
+  recentInvoices: Array<any>;
+
+  // Legacy Submissions (for backward compatibility)
+  submissions: {
+    totalEarnings: number;
+    pendingRequests: number;
+    approvedRequests: number;
+  };
 }
 
 

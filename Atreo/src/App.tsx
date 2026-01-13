@@ -1,208 +1,275 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { canAccessSettings } from './utils/permissions';
-import { STORAGE_KEYS } from './constants/index';
-import Login from './pages/auth/Login';
-import Signup from './pages/auth/Signup';
-import AdminLayout from './layouts/AdminLayout';
-import UserLayout from './layouts/UserLayout';
-import AdminDashboard from './pages/admin/AdminDashboard';
-import AdminEmployees from './pages/admin/AdminEmployees';
-import AdminAdmins from './pages/admin/AdminAdmins';
-import AdminPayments from './pages/admin/AdminPayments';
-import AdminTools from './pages/admin/AdminTools';
-import AdminSettings from './pages/admin/AdminSettings';
-import AdminAIFeatures from './pages/admin/AdminAIFeatures';
-import AdminUsers from './pages/admin/AdminUsers';
-import AdminOrganizations from './pages/admin/AdminOrganizations';
-import AdminInvoices from './pages/admin/AdminInvoices';
-import AdminAssets from './pages/admin/AdminAssets';
-import AdminDomains from './pages/admin/AdminDomains';
-import AdminEmails from './pages/admin/AdminEmails';
-import AdminMessages from './pages/admin/AdminMessages';
-import AdminCustomers from './pages/admin/AdminCustomers';
-import AdminCredentials from './pages/admin/AdminCredentials';
-import AdminAnalytics from './pages/admin/AdminAnalytics';
-import AdminAutomation from './pages/admin/AdminAutomation';
-import AdminSecurity from './pages/admin/AdminSecurity';
-import AdminLogs from './pages/admin/AdminLogs';
-import AdminHelp from './pages/admin/AdminHelp';
-import EmployeeDashboard from './pages/user/EmployeeDashboard';
-import UserSubmission from './pages/user/UserSubmission';
-import UserProfileComponent from './pages/user/UserProfile';
-import UserTools from './pages/user/UserTools';
-import Settings from './pages/Settings';
-import MobileBlock from './components/MobileBlock';
-import ErrorBoundary from './components/ErrorBoundary';
+import React, { useState, useEffect, useMemo } from "react";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import { canAccessSettings } from "./utils/permissions";
+import { STORAGE_KEYS } from "./constants/index";
+import Login from "./pages/auth/Login";
+import Signup from "./pages/auth/Signup";
+import AdminLayout from "./layouts/AdminLayout";
+import UserLayout from "./layouts/UserLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminEmployees from "./pages/admin/AdminEmployees";
+import AdminAdmins from "./pages/admin/AdminAdmins";
+import AdminPayments from "./pages/admin/AdminPayments";
+import AdminTools from "./pages/admin/AdminTools";
+import AdminSettings from "./pages/admin/AdminSettings";
+import AdminAIFeatures from "./pages/admin/AdminAIFeatures";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminOrganizations from "./pages/admin/AdminOrganizations";
+import AdminInvoices from "./pages/admin/AdminInvoices";
+import AdminAssets from "./pages/admin/AdminAssets";
+import AdminDomains from "./pages/admin/AdminDomains";
+import AdminEmails from "./pages/admin/AdminEmails";
+import AdminMessages from "./pages/admin/AdminMessages";
+import AdminCustomers from "./pages/admin/AdminCustomers";
+import AdminCredentials from "./pages/admin/AdminCredentials";
+import AdminAnalytics from "./pages/admin/AdminAnalytics";
+import AdminAutomation from "./pages/admin/AdminAutomation";
+import AdminSecurity from "./pages/admin/AdminSecurity";
+import AdminLogs from "./pages/admin/AdminLogs";
+import AdminHelp from "./pages/admin/AdminHelp";
+import EmployeeDashboard from "./pages/user/EmployeeDashboard";
+import UserDashboard from "./pages/user/UserDashboard";
+import UserSubmission from "./pages/user/UserSubmission";
+import UserProfileComponent from "./pages/user/UserProfile";
+import UserTools from "./pages/user/UserTools";
+import UserInvoices from "./pages/user/UserInvoices";
+import AccountantDashboard from "./pages/user/AccountantDashboard";
+import Settings from "./pages/Settings";
+import MobileBlock from "./components/MobileBlock";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 const AppContent: React.FC = () => {
   const { user, isLoading, setUser } = useAuth();
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [authView, setAuthView] = useState<'login' | 'signup'>('login');
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [authView, setAuthView] = useState<"login" | "signup">("login");
   const adminTabs = [
-    'dashboard',
-    'payments',
-    'customers',
-    'messages',
-    'organizations',
-    'employees',
-    'users',
-    'admins',
-    'products',
-    'invoices',
-    'assets',
-    'credentials',
-    'analytics',
-    'ai-features',
-    'automation',
-    'settings',
-    'security',
-    'logs',
-    'help',
-    'payroll',
-    'tools',
-    'domains',
-    'emails'
+    "dashboard",
+    "payments",
+    "customers",
+    "messages",
+    "organizations",
+    "employees",
+    "users",
+    "admins",
+    "products",
+    "invoices",
+    "assets",
+    "credentials",
+    "analytics",
+    "ai-features",
+    "automation",
+    "settings",
+    "security",
+    "logs",
+    "help",
+    "payroll",
+    "tools",
+    "domains",
+    "emails",
   ];
-  const userTabs = ['dashboard', 'submission', 'tools', 'invoices', 'profile', 'settings'];
-  const getDefaultTab = (role: string | undefined) => (role === 'admin' ? 'dashboard' : 'dashboard');
+  const userTabs = [
+    "dashboard",
+    "credentials",
+    "invoices",
+    "profile",
+    "settings",
+  ];
+  const accountantTabs = [
+    "dashboard",
+    "invoices",
+    "credentials",
+    "ai-features",
+    "profile",
+    "settings",
+  ]; // Read-only access
+  const getDefaultTab = (role: string | undefined) => "dashboard";
 
   // Restore last active tab on load (per role) - only during same session
   useEffect(() => {
     if (!user) return;
     const storageKey = `atreo_active_tab_${user.role}`;
     const storedTab = sessionStorage.getItem(storageKey); // Use sessionStorage instead of localStorage
-    const allowedTabs = user.role === 'admin' ? adminTabs : userTabs;
+    const allowedTabs =
+      user.role === "admin"
+        ? adminTabs
+        : user.role === "accountant"
+          ? accountantTabs
+          : userTabs;
     if (storedTab && allowedTabs.includes(storedTab)) {
       setActiveTab(storedTab);
     } else {
       setActiveTab(getDefaultTab(user.role));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.role]);
-
 
   // Redirect regular admins away from admins page
   useEffect(() => {
-    if (user && user.role === 'admin' && activeTab === 'admins' && user.adminRole !== 'super-admin') {
-      setActiveTab('dashboard');
+    if (
+      user &&
+      user.role === "admin" &&
+      activeTab === "admins" &&
+      user.adminRole !== "super-admin"
+    ) {
+      setActiveTab("dashboard");
     }
   }, [user, activeTab]);
 
   // Handle tab change with proper state update
   const handleTabChange = React.useCallback(
     (tab: string) => {
-      const allowedTabs = user?.role === 'admin' ? adminTabs : userTabs;
-      const targetTab = allowedTabs.includes(tab) ? tab : getDefaultTab(user?.role);
+      const allowedTabs =
+        user?.role === "admin"
+          ? adminTabs
+          : user?.role === "accountant"
+            ? accountantTabs
+            : userTabs;
+      const targetTab = allowedTabs.includes(tab)
+        ? tab
+        : getDefaultTab(user?.role);
       setActiveTab(targetTab);
       if (user) {
         sessionStorage.setItem(`atreo_active_tab_${user.role}`, targetTab); // Use sessionStorage
       }
     },
-    [adminTabs, user, userTabs]
+    [adminTabs, accountantTabs, user, userTabs],
   );
 
   // Page content memoization - MUST be before any conditional returns (Rules of Hooks)
-  // 
+  //
   // IMPORTANT: Frontend checks are for UX only. Backend APIs will enforce permissions.
   // Even if a page component renders here, API calls will return 403 if permission is missing.
   const pageContent = useMemo(() => {
     if (!user) return null;
-    
-    if (user.role === 'admin') {
+
+    if (user.role === "admin") {
       switch (activeTab) {
         // General
-        case 'dashboard':
+        case "dashboard":
           return <AdminDashboard key="dashboard" />;
-        case 'payments':
+        case "payments":
           return <AdminPayments key="payments" />; // Use AdminPayments component
-        case 'customers':
+        case "customers":
           return <AdminCustomers key="customers" />;
-        case 'messages':
+        case "messages":
           return <AdminMessages key="messages" />;
-        
+
         // Management
-        case 'organizations':
+        case "organizations":
           return <AdminOrganizations key="organizations" />;
-        case 'employees':
+        case "employees":
           return <AdminEmployees key="employees" />;
-        case 'users':
+        case "users":
           return <AdminUsers key="users" />;
-        case 'admins':
+        case "admins":
           // Only super-admins can access the Admins page
-          if (user.adminRole !== 'super-admin') {
+          if (user.adminRole !== "super-admin") {
             return <AdminDashboard key="dashboard-fallback" />;
           }
           return <AdminAdmins key="admins" />;
-        
+
         // Tools
-        case 'products':
+        case "products":
           return <AdminTools key="products" />; // Map products to tools
-        case 'invoices':
+        case "invoices":
           return <AdminInvoices key="invoices" />;
-        case 'assets':
+        case "assets":
           return <AdminAssets key="assets" />;
-        case 'credentials':
-          // Credentials page exists but is NOT in sidebar per requirements
-          // Can still be accessed via direct URL if permissions allow
-          return <AdminCredentials key="credentials" />;
-        
+        case "credentials":
+          // Use AdminTools for credentials (same as accountant, but with edit access)
+          return <AdminTools key="credentials" readOnly={false} />;
+
         // Intelligence
-        case 'analytics':
+        case "analytics":
           return <AdminAnalytics key="analytics" />;
-        case 'ai-features':
+        case "ai-features":
           return <AdminAIFeatures key="ai-features" />;
-        case 'automation':
+        case "automation":
           return <AdminAutomation key="automation" />;
-        
+
         // System (highly sensitive - check permissions)
-        case 'settings':
+        case "settings":
           // Only Super Admin by default, or Admins with explicit permission
-          if (user.adminRole !== 'super-admin' && !canAccessSettings(user)) {
+          if (user.adminRole !== "super-admin" && !canAccessSettings(user)) {
             return <AdminDashboard key="dashboard-fallback" />;
           }
           return <AdminSettings key="settings" />;
-        case 'security':
+        case "security":
           // Only admins can access security
-          if (user.role !== 'admin') {
+          if (user.role !== "admin") {
             return <AdminDashboard key="dashboard-fallback" />;
           }
           return <AdminSecurity key="security" />;
-        case 'logs':
+        case "logs":
           // Only admins can access logs
-          if (user.role !== 'admin') {
+          if (user.role !== "admin") {
             return <AdminDashboard key="dashboard-fallback" />;
           }
           return <AdminLogs key="logs" />;
-        case 'help':
+        case "help":
           return <AdminHelp key="help" />;
-        
+
         // Legacy routes (for backward compatibility)
-        case 'payroll':
+        case "payroll":
           return <AdminPayments key="payroll" />; // Use AdminPayments for payroll too
-        case 'tools':
+        case "tools":
           return <AdminTools key="tools" />;
-        case 'domains':
+        case "domains":
           return <AdminDomains key="domains" />;
-        case 'emails':
+        case "emails":
           return <AdminEmails key="emails" />;
-        
+
         default:
           return <AdminDashboard key="dashboard-default" />;
       }
-    } else {
+    } else if (user.role === "accountant") {
+      // Accountant has read-only access with comprehensive dashboard and credentials
       switch (activeTab) {
-        case 'dashboard':
-          return <EmployeeDashboard key="dashboard" />;
-        case 'submission':
-          return <UserSubmission key="submission" />;
-        case 'tools':
-          return <UserTools key="tools" />;
-        case 'invoices':
+        case "dashboard":
+          return <AccountantDashboard key="dashboard" />;
+        case "invoices":
           return <AdminInvoices key="invoices" />;
-        case 'profile':
+        case "credentials":
+          return <AdminTools key="credentials" readOnly={true} />;
+        case "ai-features":
+          return <AdminAIFeatures key="ai-features" />;
+        case "profile":
           return <UserProfileComponent key="profile" />;
-        case 'settings':
+        case "settings":
+          return <Settings key="settings" />;
+        default:
+          return <AccountantDashboard key="dashboard-default" />;
+      }
+    } else if (user.role === "user") {
+      // Regular users have full access to user features
+      switch (activeTab) {
+        case "dashboard":
+          return <UserDashboard key="dashboard" />;
+        case "credentials":
+          return <UserTools key="credentials" />;
+        case "invoices":
+          return <UserInvoices key="invoices" />;
+        case "profile":
+          return <UserProfileComponent key="profile" />;
+        case "settings":
+          return <Settings key="settings" />;
+        default:
+          return <UserDashboard key="dashboard-default" />;
+      }
+    } else {
+      // Employee role fallback
+      switch (activeTab) {
+        case "dashboard":
+          return <EmployeeDashboard key="dashboard" />;
+        case "credentials":
+          return <UserTools key="credentials" />;
+        case "invoices":
+          return <UserInvoices key="invoices" />;
+        case "analytics":
+          return <UserDashboard key="analytics" />;
+        case "profile":
+          return <UserProfileComponent key="profile" />;
+        case "settings":
           return <Settings key="settings" />;
         default:
           return <EmployeeDashboard key="dashboard-default" />;
@@ -230,19 +297,19 @@ const AppContent: React.FC = () => {
       setUser(newUser);
     };
 
-    if (authView === 'signup') {
+    if (authView === "signup") {
       return (
         <Signup
-          onBackToLogin={() => setAuthView('login')}
+          onBackToLogin={() => setAuthView("login")}
           onSignupSuccess={handleSignupSuccess}
         />
       );
     }
 
-    return <Login onSwitchToSignup={() => setAuthView('signup')} />;
+    return <Login onSwitchToSignup={() => setAuthView("signup")} />;
   }
 
-  if (user.role === 'admin') {
+  if (user.role === "admin") {
     return (
       <ErrorBoundary>
         <AdminLayout activeTab={activeTab} onTabChange={handleTabChange}>
@@ -251,6 +318,7 @@ const AppContent: React.FC = () => {
       </ErrorBoundary>
     );
   } else {
+    // User, Accountant, and Employee roles use UserLayout
     return (
       <ErrorBoundary>
         <UserLayout activeTab={activeTab} onTabChange={handleTabChange}>

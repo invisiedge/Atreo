@@ -65,15 +65,28 @@ export default function UserTools() {
   };
 
   const filteredTools = tools.filter(tool => {
-    const matchesSearch = tool.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          tool.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          tool.category?.toLowerCase().includes(searchTerm.toLowerCase());
+    // Global search - search across all relevant fields
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = !searchTerm || 
+      tool.name?.toLowerCase().includes(searchLower) ||
+      tool.description?.toLowerCase().includes(searchLower) ||
+      tool.category?.toLowerCase().includes(searchLower) ||
+      tool.username?.toLowerCase().includes(searchLower) ||
+      tool.notes?.toLowerCase().includes(searchLower) ||
+      (Array.isArray(tool.tags) && tool.tags.some((tag: string) => tag.toLowerCase().includes(searchLower))) ||
+      tool.project?.toLowerCase().includes(searchLower) ||
+      tool.department?.toLowerCase().includes(searchLower) ||
+      tool.client?.toLowerCase().includes(searchLower) ||
+      (tool.createdBy && typeof tool.createdBy === 'object' && 'name' in tool.createdBy && 
+       (tool.createdBy.name as string)?.toLowerCase().includes(searchLower)) ||
+      (tool.createdBy && typeof tool.createdBy === 'object' && 'email' in tool.createdBy && 
+       (tool.createdBy.email as string)?.toLowerCase().includes(searchLower)) ||
+      (tool.organizationId && typeof tool.organizationId === 'object' && 'name' in tool.organizationId && 
+       (tool.organizationId.name as string)?.toLowerCase().includes(searchLower));
 
     // Category filter
     const matchesCategory = filterCategory === 'all' ||
-                           tool.tags?.some((tag: string) =>
-                             tag.toLowerCase().replace(/\s+/g, '-') === filterCategory
-                           );
+                           (tool.category && tool.category.toLowerCase().replace(/\s+/g, '-') === filterCategory);
 
     return matchesSearch && matchesCategory;
   });
@@ -206,7 +219,7 @@ export default function UserTools() {
             <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Search tools..."
+              placeholder="Global search (name, username, company, etc.)..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"

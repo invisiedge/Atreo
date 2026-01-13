@@ -8,14 +8,16 @@ import { BaseApiClient } from './client';
 
 export class UserApi extends BaseApiClient {
   async getUserProfile(): Promise<UserProfile> {
-    return this.request<UserProfile>('/user/profile');
+    const response = await this.request<{ user: UserProfile }>('/users/profile/me');
+    return response.user;
   }
 
   async updateUserProfile(data: UpdateUserProfileRequest): Promise<UserProfile> {
-    return this.request<UserProfile>('/user/profile', {
-      method: 'PATCH',
+    const response = await this.request<{ user: UserProfile; message: string }>('/users/profile/me', {
+      method: 'PUT',
       body: JSON.stringify(data),
     });
+    return response.user;
   }
 
   // Admin user management methods
@@ -87,5 +89,36 @@ export class UserApi extends BaseApiClient {
     return this.request<void>(`/users/${userId}`, {
       method: 'DELETE',
     });
+  }
+
+  /**
+   * Upload a document for the current user's profile
+   * @param documentType - Type of document (resume, offerLetter, employeeAgreement, nda, govtId, passport, addressProof, pan, taxId)
+   * @param file - File to upload
+   */
+  async uploadDocument(documentType: string, file: File): Promise<{ message: string; documentType: string; fileUrl: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    return this.request<{ message: string; documentType: string; fileUrl: string }>(
+      `/users/profile/me/documents/${documentType}`,
+      {
+        method: 'POST',
+        body: formData,
+      }
+    );
+  }
+
+  /**
+   * Delete a document from the current user's profile
+   * @param documentType - Type of document to delete
+   */
+  async deleteDocument(documentType: string): Promise<{ message: string; documentType: string }> {
+    return this.request<{ message: string; documentType: string }>(
+      `/users/profile/me/documents/${documentType}`,
+      {
+        method: 'DELETE',
+      }
+    );
   }
 }

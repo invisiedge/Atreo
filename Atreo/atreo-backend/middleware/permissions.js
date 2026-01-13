@@ -26,7 +26,7 @@ const Admin = require('../models/Admin');
 async function hasModuleAccess(userId, module) {
   const user = await User.findById(userId);
   if (!user) return false;
-  
+
   // Super Admin has access to all modules
   if (user.role === 'admin') {
     const admin = await Admin.findOne({ userId });
@@ -34,11 +34,17 @@ async function hasModuleAccess(userId, module) {
       return true;
     }
   }
-  
+
+  // Accountants have read-only access to specific modules
+  if (user.role === 'accountant') {
+    const accountantModules = ['invoices', 'dashboard', 'users', 'settings', 'credentials'];
+    return accountantModules.includes(module);
+  }
+
   // Check explicit permissions
   const permission = await Permission.findOne({ userId });
   if (!permission) return false;
-  
+
   return permission.hasModuleAccess(module);
 }
 
@@ -48,7 +54,7 @@ async function hasModuleAccess(userId, module) {
 async function hasPageAccess(userId, module, page, accessType = 'read') {
   const user = await User.findById(userId);
   if (!user) return false;
-  
+
   // Super Admin has access to all pages
   if (user.role === 'admin') {
     const admin = await Admin.findOne({ userId });
@@ -56,11 +62,21 @@ async function hasPageAccess(userId, module, page, accessType = 'read') {
       return true;
     }
   }
-  
+
+  // Accountants have read-only access to specific modules
+  if (user.role === 'accountant') {
+    const accountantModules = ['invoices', 'dashboard', 'users', 'settings', 'credentials'];
+    // Only allow read access, deny write access
+    if (accountantModules.includes(module) && accessType === 'read') {
+      return true;
+    }
+    return false;
+  }
+
   // Check explicit permissions
   const permission = await Permission.findOne({ userId });
   if (!permission) return false;
-  
+
   return permission.hasPageAccess(module, page, accessType);
 }
 

@@ -1,73 +1,110 @@
-import { useState } from 'react';
+import { useState } from "react";
 import {
   FiHome,
-  FiFileText,
+  FiKey,
+  FiDollarSign,
   FiUser,
+  FiSettings,
   FiChevronLeft,
   FiChevronRight,
   FiLogOut,
-  FiTool,
-  FiSettings
-} from 'react-icons/fi';
-import { useAuth } from '../../context/AuthContext';
-import ThemeToggle from '../shared/ThemeToggle';
-import { hasPageAccess } from '../../utils/permissions';
+  FiCpu,
+} from "react-icons/fi";
+import { useAuth } from "../../context/AuthContext";
+import ThemeToggle from "../shared/ThemeToggle";
 
 interface UserSidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
 }
 
-export default function UserSidebar({ activeTab, onTabChange }: UserSidebarProps) {
+export default function UserSidebar({
+  activeTab,
+  onTabChange,
+}: UserSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { user, logout } = useAuth();
 
-  // All available tabs with their module mapping
-  // Maps user sidebar tabs to admin sidebar modules/pages
-  const allTabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: FiHome, module: 'general', page: 'dashboard' },
-    { id: 'submission', label: 'Submit Request', icon: FiFileText, module: null, page: null }, // Legacy page, always show
-    { id: 'tools', label: 'Tools', icon: FiTool, module: 'tools', page: 'products' }, // Maps to products
-    { id: 'invoices', label: 'Invoices', icon: FiFileText, module: 'tools', page: 'invoices' },
-    { id: 'profile', label: 'Profile', icon: FiUser, module: null, page: null }, // Always show profile
-    { id: 'settings', label: 'Settings', icon: FiSettings, module: 'system', page: 'settings' }
-  ];
-
-  // Filter tabs based on user permissions
-  const tabs = allTabs.filter(tab => {
-    // Always show profile and submission (legacy pages)
-    if (tab.id === 'profile' || tab.id === 'submission') {
-      return true;
+  // Get navigation items based on user role
+  const getNavigationItems = () => {
+    if (user?.role === "accountant") {
+      // For Accountants: Dashboard with invoice graphs, Invoices, Credentials (view-only), AI Features, Profile, Settings
+      return [
+        {
+          id: "dashboard",
+          label: "Dashboard",
+          icon: FiHome,
+          description: "Invoice analytics & graphs",
+        },
+        {
+          id: "invoices",
+          label: "Invoice Management",
+          icon: FiDollarSign,
+          description: "View & manage invoices",
+        },
+        {
+          id: "credentials",
+          label: "Credentials",
+          icon: FiKey,
+          description: "View organization credentials",
+        },
+        {
+          id: "ai-features",
+          label: "AI Features",
+          icon: FiCpu,
+          description: "AI-powered tools & features",
+        },
+        {
+          id: "profile",
+          label: "Profile",
+          icon: FiUser,
+          description: "Personal information",
+        },
+        {
+          id: "settings",
+          label: "Settings",
+          icon: FiSettings,
+          description: "Account settings",
+        },
+      ];
+    } else {
+      // For Regular Users: Full access to all features
+      return [
+        {
+          id: "dashboard",
+          label: "Dashboard",
+          icon: FiHome,
+          description: "Personal analytics & overview",
+        },
+        {
+          id: "credentials",
+          label: "Credential Management",
+          icon: FiKey,
+          description: "Add, categorize, share credentials",
+        },
+        {
+          id: "invoices",
+          label: "Invoice Management",
+          icon: FiDollarSign,
+          description: "Upload & manage invoices",
+        },
+        {
+          id: "profile",
+          label: "Profile",
+          icon: FiUser,
+          description: "Personal information",
+        },
+        {
+          id: "settings",
+          label: "Settings",
+          icon: FiSettings,
+          description: "Account settings",
+        },
+      ];
     }
+  };
 
-    // If no module/page mapping, show by default
-    if (!tab.module || !tab.page) {
-      return true;
-    }
-
-    // Check 3-layer permission structure first
-    if (
-      user &&
-      typeof user.permissions === 'object' &&
-      !Array.isArray(user.permissions) &&
-      'modules' in user.permissions
-    ) {
-      return hasPageAccess(user, tab.module, tab.page);
-    }
-
-    // Fallback to array-based permissions (legacy format)
-    if (Array.isArray(user?.permissions)) {
-      // For array format, check if the page ID is in the array
-      // Also check for legacy 'tools' permission which maps to 'products'
-      if (tab.id === 'tools' && user.permissions.includes('products')) {
-        return true;
-      }
-      return user.permissions.includes(tab.id);
-    }
-
-    // If no permissions structure, show all tabs (backward compatibility)
-    return true;
-  });
+  const navigationItems = getNavigationItems();
 
   const toggleSidebar = () => {
     setIsCollapsed(!isCollapsed);
@@ -78,61 +115,89 @@ export default function UserSidebar({ activeTab, onTabChange }: UserSidebarProps
   };
 
   return (
-    <div className={`bg-card border-r border-border h-screen transition-all duration-300 relative flex flex-col ${isCollapsed ? 'w-16' : 'w-64'}`}>
+    <div
+      className={`bg-card border-r border-border h-screen transition-all duration-300 relative flex flex-col ${isCollapsed ? "w-16" : "w-64"}`}
+    >
       {/* Logo */}
       <div className="p-6 border-b border-border flex items-center justify-between">
-        {!isCollapsed && <h1 className="text-2xl font-bold text-foreground">Atreo</h1>}
-        {isCollapsed && <h1 className="text-2xl font-bold text-foreground text-center">A</h1>}
+        {!isCollapsed && (
+          <h1 className="text-2xl font-bold text-foreground">Atreo</h1>
+        )}
+        {isCollapsed && (
+          <h1 className="text-2xl font-bold text-foreground text-center">A</h1>
+        )}
         {!isCollapsed && <ThemeToggle />}
       </div>
-      
+
       {/* Navigation */}
       <nav className="mt-6 flex-1">
         <div className="px-3 space-y-1">
-          {tabs.map((tab) => {
-            const IconComponent = tab.icon;
-            const isActive = activeTab === tab.id;
-            const handleClick = (e: React.MouseEvent) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onTabChange(tab.id);
-            };
+          {navigationItems.map((item) => {
+            const IconComponent = item.icon;
+            const isActive = activeTab === item.id;
+
             return (
               <button
-                key={tab.id}
+                key={item.id}
                 type="button"
-                onClick={handleClick}
+                onClick={() => onTabChange(item.id)}
                 className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                   isActive
-                    ? 'bg-primary/10 text-primary border-l-4 border-primary'
-                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                } ${isCollapsed ? 'justify-center' : ''}`}
-                title={isCollapsed ? tab.label : undefined}
+                    ? "bg-primary/10 text-primary border-l-4 border-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                } ${isCollapsed ? "justify-center" : ""}`}
+                title={isCollapsed ? item.label : undefined}
               >
-                <IconComponent className={`h-5 w-5 ${isCollapsed ? '' : 'mr-3'} ${isActive ? 'text-primary' : ''}`} />
-                {!isCollapsed && tab.label}
+                <IconComponent
+                  className={`h-5 w-5 ${isCollapsed ? "" : "mr-3"} ${isActive ? "text-primary" : ""}`}
+                />
+                {!isCollapsed && item.label}
               </button>
             );
           })}
         </div>
       </nav>
-      
+
       {/* User Info with Logout */}
       <div className="border-t border-border mt-auto">
         <div className="p-4">
+          {!isCollapsed && user?.role && (
+            <div className="mb-3 px-2">
+              <span
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  user.role === "admin"
+                    ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300"
+                    : user.role === "accountant"
+                      ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                      : "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                }`}
+              >
+                {user.role === "accountant"
+                  ? "Accountant"
+                  : user.role === "admin"
+                    ? "Admin"
+                    : "User"}
+              </span>
+            </div>
+          )}
+
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center flex-1 min-w-0">
               <div className="flex-shrink-0">
                 <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
                   <span className="text-sm font-medium text-primary">
-                    {user?.name?.charAt(0) || 'U'}
+                    {user?.name?.charAt(0) || "U"}
                   </span>
                 </div>
               </div>
               {!isCollapsed && (
                 <div className="ml-3 min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground truncate">{user?.name || 'Employee'}</p>
-                  <p className="text-xs text-muted-foreground truncate">{user?.email || 'employee@atreo.com'}</p>
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {user?.name || "User"}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {user?.email || "user@atreo.com"}
+                  </p>
                 </div>
               )}
             </div>

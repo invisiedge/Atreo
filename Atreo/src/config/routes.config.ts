@@ -17,59 +17,59 @@ export interface RouteConfig {
  */
 export const ADMIN_ROUTES = {
   // Dashboard
-  DASHBOARD: '/admin/dashboard',
+  DASHBOARD: "/admin/dashboard",
 
   // Management
-  EMPLOYEES: '/admin/employees',
-  USERS: '/admin/users',
-  ADMINS: '/admin/admins',
-  ORGANIZATIONS: '/admin/organizations',
-  CUSTOMERS: '/admin/customers',
+  EMPLOYEES: "/admin/employees",
+  USERS: "/admin/users",
+  ADMINS: "/admin/admins",
+  ORGANIZATIONS: "/admin/organizations",
+  CUSTOMERS: "/admin/customers",
 
   // Tools & Resources
-  TOOLS: '/admin/tools',
-  CREDENTIALS: '/admin/credentials',
-  ASSETS: '/admin/assets',
+  TOOLS: "/admin/tools",
+  CREDENTIALS: "/admin/credentials",
+  ASSETS: "/admin/assets",
 
   // Financial
-  PAYROLL: '/admin/payroll',
-  INVOICES: '/admin/invoices',
-  INVOICE_CREATE: '/admin/invoices/create',
+  PAYROLL: "/admin/payroll",
+  INVOICES: "/admin/invoices",
+  INVOICE_CREATE: "/admin/invoices/create",
 
   // Intelligence
-  ANALYTICS: '/admin/analytics',
-  AI_FEATURES: '/admin/ai-features',
-  AUTOMATION: '/admin/automation',
+  ANALYTICS: "/admin/analytics",
+  AI_FEATURES: "/admin/ai-features",
+  AUTOMATION: "/admin/automation",
 
   // Communication
-  MESSAGES: '/admin/messages',
-  EMAILS: '/admin/emails',
-  DOMAINS: '/admin/domains',
+  MESSAGES: "/admin/messages",
+  EMAILS: "/admin/emails",
+  DOMAINS: "/admin/domains",
 
   // System
-  SETTINGS: '/admin/settings',
-  SECURITY: '/admin/security',
-  LOGS: '/admin/logs',
-  HELP: '/admin/help',
+  SETTINGS: "/admin/settings",
+  SECURITY: "/admin/security",
+  LOGS: "/admin/logs",
+  HELP: "/admin/help",
 } as const;
 
 /**
  * User Routes
  */
 export const USER_ROUTES = {
-  DASHBOARD: '/user/dashboard',
-  PROFILE: '/user/profile',
-  SUBMISSION: '/user/submission',
-  TOOLS: '/user/tools',
-  SETTINGS: '/user/settings',
+  DASHBOARD: "/user/dashboard",
+  PROFILE: "/user/profile",
+  SUBMISSION: "/user/submission",
+  TOOLS: "/user/tools",
+  SETTINGS: "/user/settings",
 } as const;
 
 /**
  * Auth Routes
  */
 export const AUTH_ROUTES = {
-  LOGIN: '/login',
-  SIGNUP: '/signup',
+  LOGIN: "/login",
+  SIGNUP: "/signup",
 } as const;
 
 /**
@@ -102,21 +102,31 @@ export const ALL_ROUTES = {
 /**
  * Get route by user role
  */
-export function getDefaultRoute(role: 'admin' | 'user'): string {
-  return role === 'admin' ? ADMIN_ROUTES.DASHBOARD : USER_ROUTES.DASHBOARD;
+export function getDefaultRoute(role: "admin" | "user" | "accountant"): string {
+  if (role === "admin") return ADMIN_ROUTES.DASHBOARD;
+  if (role === "accountant") return USER_ROUTES.DASHBOARD; // Accountants use user layout
+  return USER_ROUTES.DASHBOARD;
 }
 
 /**
  * Check if route is accessible by role
  */
-export function canAccessRoute(route: string, role: 'admin' | 'user'): boolean {
+export function canAccessRoute(
+  route: string,
+  role: "admin" | "user" | "accountant",
+): boolean {
   if (PUBLIC_ROUTES.includes(route)) return true;
 
-  if (role === 'admin') {
+  if (role === "admin") {
     return ADMIN_ROLE_ROUTES.includes(route);
   }
 
-  if (role === 'user') {
+  if (role === "accountant") {
+    // Accountants can access user routes (they use user layout with restricted features)
+    return USER_ROLE_ROUTES.includes(route);
+  }
+
+  if (role === "user") {
     return USER_ROLE_ROUTES.includes(route);
   }
 

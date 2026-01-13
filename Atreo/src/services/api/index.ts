@@ -81,6 +81,8 @@ class ApiClient {
   updateUserStatus = (...args: Parameters<UserApi['updateUserStatus']>) => this.userApi.updateUserStatus(...args);
   updateUserPermissions = (...args: Parameters<UserApi['updateUserPermissions']>) => this.userApi.updateUserPermissions(...args);
   deleteUser = (...args: Parameters<UserApi['deleteUser']>) => this.userApi.deleteUser(...args);
+  uploadDocument = (...args: Parameters<UserApi['uploadDocument']>) => this.userApi.uploadDocument(...args);
+  deleteDocument = (...args: Parameters<UserApi['deleteDocument']>) => this.userApi.deleteDocument(...args);
 
   // Employees
   getEmployees = () => this.employeeApi.getEmployees();
@@ -89,6 +91,8 @@ class ApiClient {
   deleteEmployee = (...args: Parameters<EmployeeApi['deleteEmployee']>) => this.employeeApi.deleteEmployee(...args);
   getEmployeeByEmployeeId = (...args: Parameters<EmployeeApi['getEmployeeByEmployeeId']>) =>
     this.employeeApi.getEmployeeByEmployeeId(...args);
+  uploadEmployeeDocument = (...args: Parameters<EmployeeApi['uploadDocument']>) => this.employeeApi.uploadDocument(...args);
+  deleteEmployeeDocument = (...args: Parameters<EmployeeApi['deleteDocument']>) => this.employeeApi.deleteDocument(...args);
 
   // Admins
   getAdmins = () => this.adminApi.getAdmins();

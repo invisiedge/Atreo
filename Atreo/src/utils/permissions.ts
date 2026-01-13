@@ -142,11 +142,16 @@ export function hasAccessType(
 
 /**
  * Check if user can access Settings
- * Only Super Admin by default, or Admins with explicit permission
+ * Super Admin, Accountants, and Admins with explicit permission can access
  */
 export function canAccessSettings(user: any): boolean {
   // Super Admin always has access
   if (user?.role === 'admin' && user?.adminRole === 'super-admin') {
+    return true;
+  }
+
+  // Accountants have access to settings
+  if (user?.role === 'accountant') {
     return true;
   }
 

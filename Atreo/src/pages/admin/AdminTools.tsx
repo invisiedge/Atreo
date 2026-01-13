@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { FiTool, FiPlus, FiTrash2, FiEye, FiEyeOff, FiFilter, FiRefreshCw, FiDollarSign, FiShield, FiCreditCard, FiX, FiDownload, FiChevronDown, FiMove, FiKey, FiShare2, FiUsers, FiUpload, FiActivity } from 'react-icons/fi';
+import { FiTool, FiPlus, FiTrash2, FiEye, FiEyeOff, FiFilter, FiRefreshCw, FiDollarSign, FiShield, FiCreditCard, FiX, FiDownload, FiChevronDown, FiMove, FiKey, FiShare2, FiUsers, FiUpload, FiActivity, FiGrid, FiSearch, FiCheck, FiCalendar } from 'react-icons/fi';
 import { apiClient } from '../../services/api';
 import { useToast } from '../../hooks/useToast';
 import ConfirmModal from '../../components/shared/ConfirmModal';
@@ -19,15 +19,20 @@ const SERVICE_CATEGORIES = [
   { id: 'other', name: 'Other' }
 ];
 
-export default function AdminTools() {
+interface AdminToolsProps {
+  readOnly?: boolean;
+}
+
+export default function AdminTools({ readOnly = false }: AdminToolsProps) {
   const { showToast, ToastContainer } = useToast();
   const [tools, setTools] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [_error, setError] = useState<string | null>(null);
-  const [searchTerm] = useState('');
-  const [filterUsername, setFilterUsername] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [filterDate, setFilterDate] = useState('all');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [showDateDropdown, setShowDateDropdown] = useState(false);
   const [showCreateCategoryDropdown, setShowCreateCategoryDropdown] = useState(false);
   const [showEditCategoryDropdown, setShowEditCategoryDropdown] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
@@ -181,17 +186,77 @@ export default function AdminTools() {
     try {
       setLoading(true);
       setError(null);
+      // Both admin and accountant roles fetch the same data from the backend
+      // The backend returns all tools/credentials for both roles (see routes/tools.js)
+      // The readOnly prop controls UI visibility of edit/delete actions
+      console.log('=== LOADING TOOLS ===');
+      console.log('ReadOnly mode:', readOnly);
+      console.log('API Client:', apiClient);
+      console.log('API Endpoint:', '/api/tools');
+      
+      // Check authentication token
+      const token = localStorage.getItem('token');
+      console.log('Token exists:', !!token);
+      if (token) {
+        try {
+          const tokenPayload = JSON.parse(atob(token.split('.')[1]));
+          console.log('Token payload:', tokenPayload);
+          console.log('Token role:', tokenPayload.role);
+        } catch (e) {
+          console.warn('Could not parse token:', e);
+        }
+      }
+      
       const data = await apiClient.getTools();
+      console.log('=== TOOLS DATA RECEIVED ===');
+      console.log('Raw data:', data);
+      console.log('Data type:', typeof data);
+      console.log('Is array?', Array.isArray(data));
+      console.log('Data length:', Array.isArray(data) ? data.length : 'N/A');
+      if (Array.isArray(data) && data.length > 0) {
+        console.log('First tool sample:', data[0]);
+      } else if (Array.isArray(data) && data.length === 0) {
+        console.warn('⚠️ API returned empty array - no tools in database or role issue');
+      }
+      
+      // Handle both array and object responses
+      let toolsArray: any[] = [];
+      if (Array.isArray(data)) {
+        toolsArray = data;
+      } else if (data && typeof data === 'object' && 'tools' in data) {
+        toolsArray = (data as any).tools || [];
+      } else if (data && typeof data === 'object' && 'data' in data) {
+        toolsArray = (data as any).data || [];
+      } else {
+        console.warn('Unexpected data format:', data);
+        toolsArray = [];
+      }
+      
       // Ensure each tool has an id property (mapped from _id if necessary)
-      const mappedData = (data || []).map((tool: any) => ({
+      const mappedData = toolsArray.map((tool: any) => ({
         ...tool,
-        id: tool.id || tool._id
+        id: tool.id || tool._id || tool._id?.toString()
       }));
+      console.log('Mapped tools:', mappedData);
+      console.log('Final tools count:', mappedData.length);
       setTools(mappedData);
       setLastUpdated(new Date());
+      
+      if (mappedData.length === 0) {
+        console.warn('No tools found. This could mean:');
+        console.warn('1. No credentials exist in the database');
+        console.warn('2. User role is not admin/accountant');
+        console.warn('3. Backend is not returning data correctly');
+      }
     } catch (err: any) {
       console.error('Error loading tools:', err);
+      console.error('Error details:', {
+        message: err.message,
+        status: (err as any).status,
+        response: (err as any).response
+      });
       setError(err.message || 'Failed to load tools');
+      showToast(err.message || 'Failed to load credentials', 'error');
     } finally {
       setLoading(false);
     }
@@ -199,8 +264,11 @@ export default function AdminTools() {
 
   useEffect(() => {
     loadTools();
-    loadUsers();
-  }, []);
+    // Only load users if not in read-only mode (accountants don't need user list for sharing)
+    if (!readOnly) {
+      loadUsers();
+    }
+  }, [readOnly]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -208,6 +276,9 @@ export default function AdminTools() {
       const target = event.target as HTMLElement;
       if (showCategoryDropdown && !target.closest('.category-filter-dropdown')) {
         setShowCategoryDropdown(false);
+      }
+      if (showDateDropdown && !target.closest('.date-filter-dropdown')) {
+        setShowDateDropdown(false);
       }
       if (showCreateCategoryDropdown && !target.closest('.create-category-dropdown')) {
         setShowCreateCategoryDropdown(false);
@@ -219,7 +290,7 @@ export default function AdminTools() {
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showCategoryDropdown, showCreateCategoryDropdown, showEditCategoryDropdown]);
+  }, [showCategoryDropdown, showDateDropdown, showCreateCategoryDropdown, showEditCategoryDropdown]);
 
   const loadUsers = async () => {
     try {
@@ -484,17 +555,70 @@ export default function AdminTools() {
   };
 
     const filteredTools = tools.filter(tool => {
-    const matchesSearch = tool.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          tool.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          tool.category?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesUsername = !filterUsername ||
-                          (tool.username && tool.username.toLowerCase().includes(filterUsername.toLowerCase()));
+    // Global search - search across all relevant fields
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = !searchTerm || 
+      tool.name?.toLowerCase().includes(searchLower) ||
+      tool.description?.toLowerCase().includes(searchLower) ||
+      tool.category?.toLowerCase().includes(searchLower) ||
+      tool.username?.toLowerCase().includes(searchLower) ||
+      tool.notes?.toLowerCase().includes(searchLower) ||
+      (Array.isArray(tool.tags) && tool.tags.some((tag: string) => tag.toLowerCase().includes(searchLower))) ||
+      tool.project?.toLowerCase().includes(searchLower) ||
+      tool.department?.toLowerCase().includes(searchLower) ||
+      tool.client?.toLowerCase().includes(searchLower) ||
+      (tool.createdBy && typeof tool.createdBy === 'object' && 'name' in tool.createdBy && 
+       (tool.createdBy.name as string)?.toLowerCase().includes(searchLower)) ||
+      (tool.createdBy && typeof tool.createdBy === 'object' && 'email' in tool.createdBy && 
+       (tool.createdBy.email as string)?.toLowerCase().includes(searchLower)) ||
+      (tool.organizationId && typeof tool.organizationId === 'object' && 'name' in tool.organizationId && 
+       (tool.organizationId.name as string)?.toLowerCase().includes(searchLower));
 
     // Category filter
     const matchesCategory = filterCategory === 'all' ||
                            (tool.category && tool.category.toLowerCase().replace(/\s+/g, '-') === filterCategory);
 
-    return matchesSearch && matchesUsername && matchesCategory;
+    // Date filter
+    let matchesDate = true;
+    if (filterDate !== 'all' && tool.createdAt) {
+      const toolDate = new Date(tool.createdAt);
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      switch (filterDate) {
+        case 'today':
+          matchesDate = toolDate >= today;
+          break;
+        case 'this-week':
+          const weekAgo = new Date(today);
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          matchesDate = toolDate >= weekAgo;
+          break;
+        case 'this-month':
+          const monthAgo = new Date(today);
+          monthAgo.setMonth(monthAgo.getMonth() - 1);
+          matchesDate = toolDate >= monthAgo;
+          break;
+        case 'last-30-days':
+          const thirtyDaysAgo = new Date(today);
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          matchesDate = toolDate >= thirtyDaysAgo;
+          break;
+        case 'last-90-days':
+          const ninetyDaysAgo = new Date(today);
+          ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+          matchesDate = toolDate >= ninetyDaysAgo;
+          break;
+        case 'this-year':
+          const yearStart = new Date(now.getFullYear(), 0, 1);
+          matchesDate = toolDate >= yearStart;
+          break;
+        default:
+          matchesDate = true;
+      }
+    }
+
+    return matchesSearch && matchesCategory && matchesDate;
   });
 
   const toolStats = useMemo(() => {
@@ -523,6 +647,28 @@ export default function AdminTools() {
           ))}
         </div>
         <Skeleton className="h-96 w-full rounded-lg" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+          <div className="flex items-center gap-2">
+            <FiX className="h-5 w-5 text-red-600 dark:text-red-400" />
+            <div>
+              <h3 className="text-sm font-semibold text-red-800 dark:text-red-200">Error Loading Credentials</h3>
+              <p className="text-sm text-red-600 dark:text-red-300 mt-1">{error}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => loadTools()}
+            className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -576,23 +722,25 @@ export default function AdminTools() {
         />
       </div>
 
-      {/* Action Bar */}
-      <div className="bg-card rounded-lg border border-border p-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-          <div className="flex items-center gap-3">
+      {/* Enhanced Action Bar */}
+      <div className="bg-gradient-to-r from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
+          {/* Left Section - Filters & Search */}
+          <div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
             {/* Category Dropdown */}
             <div className="relative category-filter-dropdown">
               <button
                 onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-lg hover:bg-accent transition-colors"
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-all duration-200 shadow-sm hover:shadow"
               >
+                <FiGrid className="h-4 w-4 text-gray-500" />
                 <span>{SERVICE_CATEGORIES.find(cat => cat.id === filterCategory)?.name}</span>
-                <FiChevronDown className={`h-4 w-4 transition-transform ${showCategoryDropdown ? 'rotate-180' : ''}`} />
+                <FiChevronDown className={`h-4 w-4 transition-transform duration-200 ${showCategoryDropdown ? 'rotate-180' : ''}`} />
               </button>
 
               {showCategoryDropdown && (
-                <div className="absolute left-0 mt-2 w-56 bg-card border border-border rounded-lg shadow-lg z-50">
-                  <div className="py-1">
+                <div className="absolute left-0 mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 max-h-96 overflow-y-auto">
+                  <div className="py-2">
                     {SERVICE_CATEGORIES.map(category => (
                       <button
                         key={category.id}
@@ -600,10 +748,13 @@ export default function AdminTools() {
                           setFilterCategory(category.id);
                           setShowCategoryDropdown(false);
                         }}
-                        className={`w-full text-left px-4 py-2 text-sm hover:bg-accent transition-colors ${
-                          filterCategory === category.id ? 'bg-blue-50 text-primary font-semibold' : 'text-gray-700'
+                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center gap-2 ${
+                          filterCategory === category.id 
+                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold border-l-3 border-blue-500' 
+                            : 'text-gray-700 dark:text-gray-300'
                         }`}
                       >
+                        {filterCategory === category.id && <FiCheck className="h-4 w-4" />}
                         {category.name}
                       </button>
                     ))}
@@ -612,40 +763,116 @@ export default function AdminTools() {
               )}
             </div>
 
-            <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-lg hover:bg-accent transition-colors">
-              <span>Date</span>
-              <FiChevronDown className="h-4 w-4" />
-            </button>
-            <button className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors">
+            {/* Date Filter Dropdown */}
+            <div className="relative date-filter-dropdown">
+              <button
+                onClick={() => {
+                  setShowDateDropdown(!showDateDropdown);
+                  setShowCategoryDropdown(false);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-all duration-200 shadow-sm hover:shadow"
+              >
+                <FiCalendar className="h-4 w-4 text-gray-500" />
+                <span>
+                  {filterDate === 'all' ? 'Date' : 
+                   filterDate === 'today' ? 'Today' :
+                   filterDate === 'this-week' ? 'This Week' :
+                   filterDate === 'this-month' ? 'This Month' :
+                   filterDate === 'last-30-days' ? 'Last 30 Days' :
+                   filterDate === 'last-90-days' ? 'Last 90 Days' :
+                   filterDate === 'this-year' ? 'This Year' : 'Date'}
+                </span>
+                <FiChevronDown className={`h-4 w-4 transition-transform duration-200 ${showDateDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showDateDropdown && (
+                <div className="absolute left-0 mt-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50">
+                  <div className="py-2">
+                    {[
+                      { id: 'all', name: 'All Time' },
+                      { id: 'today', name: 'Today' },
+                      { id: 'this-week', name: 'This Week' },
+                      { id: 'this-month', name: 'This Month' },
+                      { id: 'last-30-days', name: 'Last 30 Days' },
+                      { id: 'last-90-days', name: 'Last 90 Days' },
+                      { id: 'this-year', name: 'This Year' }
+                    ].map(dateOption => (
+                      <button
+                        key={dateOption.id}
+                        onClick={() => {
+                          setFilterDate(dateOption.id);
+                          setShowDateDropdown(false);
+                        }}
+                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center gap-2 ${
+                          filterDate === dateOption.id 
+                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold border-l-3 border-blue-500' 
+                            : 'text-gray-700 dark:text-gray-300'
+                        }`}
+                      >
+                        {filterDate === dateOption.id && <FiCheck className="h-4 w-4" />}
+                        {dateOption.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* View Options */}
+            <button 
+              className="p-2.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-all duration-200"
+              title="View Options"
+            >
               <FiMove className="h-5 w-5" />
             </button>
-              <div className="relative">
-                <FiFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Filter by username..."
-                  value={filterUsername}
-                  onChange={(e) => setFilterUsername(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-64"
-                />
-              </div>
+
+            {/* Divider */}
+            <div className="hidden sm:block h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
+
+            {/* Enhanced Global Search */}
+            <div className="relative flex-1 min-w-[280px] max-w-md">
+              <FiSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 dark:text-gray-500" />
+              <input
+                type="text"
+                placeholder="Search by name, username, company..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-11 pr-4 py-2.5 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-all duration-200 shadow-sm hover:shadow placeholder-gray-400 dark:placeholder-gray-500"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  <FiX className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-3 ml-auto">
-            <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-foreground bg-card border border-border rounded-lg hover:bg-accent transition-colors">
-              <FiDownload className="h-4 w-4" />
-              Export
-            </button>
-            <button
-              onClick={() => setShowDeleteAllModal(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors shadow-sm"
-            >
-              <FiTrash2 className="h-4 w-4" />
-              Delete All
-            </button>
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm cursor-pointer">
+
+          {/* Right Section - Actions */}
+          {!readOnly && (
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Export Button */}
+              <button className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-all duration-200 shadow-sm hover:shadow">
+                <FiDownload className="h-4 w-4" />
+                <span className="hidden sm:inline">Export</span>
+              </button>
+
+              {/* Delete All Button */}
+              <button
+                onClick={() => setShowDeleteAllModal(true)}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-red-600 to-red-700 rounded-lg hover:from-red-700 hover:to-red-800 transition-all duration-200 shadow-md hover:shadow-lg"
+              >
+                <FiTrash2 className="h-4 w-4" />
+                <span className="hidden sm:inline">Delete All</span>
+              </button>
+
+              {/* Import Excel Button */}
+              <label className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-green-600 to-green-700 rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 shadow-md hover:shadow-lg cursor-pointer">
                 <FiUpload className="h-4 w-4" />
-                {importingExcel ? 'Importing...' : 'Import Excel'}
+                <span className="hidden sm:inline">{importingExcel ? 'Importing...' : 'Import Excel'}</span>
+                <span className="sm:hidden">{importingExcel ? '...' : 'Import'}</span>
                 <input
                   type="file"
                   accept=".xlsx,.xls,.csv"
@@ -654,6 +881,8 @@ export default function AdminTools() {
                   className="hidden"
                 />
               </label>
+
+              {/* Add Credential Button */}
               <button
                 onClick={() => {
                   setFormData({
@@ -678,13 +907,22 @@ export default function AdminTools() {
                   setSelectedTemplate(null);
                   setShowCreateModal(true);
                 }}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg"
               >
                 <FiPlus className="h-4 w-4" />
-                Add Credential
+                <span className="hidden sm:inline">Add Credential</span>
+                <span className="sm:hidden">Add</span>
               </button>
             </div>
-          </div>
+          )}
+          
+          {/* Read Only Badge */}
+          {readOnly && (
+            <div className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-lg shadow-sm">
+              <FiShield className="h-4 w-4" />
+              <span>View Only</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -740,20 +978,24 @@ export default function AdminTools() {
                         >
                           <FiEye className="h-5 w-5" />
                         </button>
-                        <button
-                          onClick={() => handleShare(tool)}
-                          className="p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors"
-                          title="Share"
-                        >
-                          <FiShare2 className="h-5 w-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteClick(tool.id, tool.name)}
-                          className="p-1.5 text-destructive hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete"
-                        >
-                          <FiTrash2 className="h-5 w-5" />
-                        </button>
+                        {!readOnly && (
+                          <>
+                            <button
+                              onClick={() => handleShare(tool)}
+                              className="p-1.5 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors"
+                              title="Share"
+                            >
+                              <FiShare2 className="h-5 w-5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteClick(tool.id, tool.name)}
+                              className="p-1.5 text-destructive hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Delete"
+                            >
+                              <FiTrash2 className="h-5 w-5" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -764,10 +1006,28 @@ export default function AdminTools() {
                     <div className="flex flex-col items-center gap-3">
                       <FiTool className="h-12 w-12 text-gray-400" />
                       <div>
-                        <h3 className="text-sm font-medium text-foreground mb-1">No credentials found</h3>
-                          <p className="text-xs text-gray-500">
-                            {searchTerm || filterUsername ? 'Try adjusting your filters.' : 'Get started by adding your first credential.'}
-                          </p>
+                        <h3 className="text-sm font-medium text-foreground mb-1">
+                          {loading ? 'Loading credentials...' : error ? 'Error loading credentials' : 'No credentials found'}
+                        </h3>
+                        <p className="text-xs text-gray-500">
+                          {error ? (
+                            <span className="text-red-600">{error}</span>
+                          ) : searchTerm || filterCategory !== 'all' || filterDate !== 'all' ? (
+                            'Try adjusting your filters'
+                          ) : (
+                            readOnly 
+                              ? 'No credentials available to view'
+                              : 'Get started by adding your first credential'
+                          )}
+                        </p>
+                        {error && (
+                          <button
+                            onClick={() => loadTools()}
+                            className="mt-3 px-4 py-2 text-sm text-primary hover:underline"
+                          >
+                            Retry
+                          </button>
+                        )}
                       </div>
                     </div>
                   </td>
@@ -1672,25 +1932,29 @@ export default function AdminTools() {
               >
                 Close
               </button>
-              <button
-                onClick={() => {
-                  setShowViewModal(false);
-                  handleShare(selectedTool);
-                }}
-                className="px-5 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm flex items-center gap-2"
-              >
-                <FiShare2 className="h-4 w-4" />
-                Share Credential
-              </button>
-              <button
-                onClick={() => {
-                  setShowViewModal(false);
-                  handleEdit(selectedTool);
-                }}
-                className="px-5 py-2.5 text-sm font-medium text-white bg-primary rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-              >
-                Edit Credential
-              </button>
+              {!readOnly && (
+                <>
+                  <button
+                    onClick={() => {
+                      setShowViewModal(false);
+                      handleShare(selectedTool);
+                    }}
+                    className="px-5 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm flex items-center gap-2"
+                  >
+                    <FiShare2 className="h-4 w-4" />
+                    Share Credential
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowViewModal(false);
+                      handleEdit(selectedTool);
+                    }}
+                    className="px-5 py-2.5 text-sm font-medium text-white bg-primary rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                  >
+                    Edit Credential
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

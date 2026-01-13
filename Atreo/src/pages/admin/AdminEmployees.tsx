@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiEye, FiEyeOff, FiEdit2, FiTrash2, FiInfo } from 'react-icons/fi';
+import { FiPlus, FiEye, FiEyeOff, FiEdit2, FiTrash2, FiInfo, FiUpload, FiDownload, FiCheck } from 'react-icons/fi';
 import { EmployeeService } from '../../services/employeeService';
 import { type Employee } from '../../services/api';
+import { apiClient } from '../../services/api';
 import AlertModal from '../../components/shared/AlertModal';
 import { useAuth } from '../../context/AuthContext';
 import { logger } from '../../lib/logger';
@@ -43,6 +44,8 @@ export default function AdminEmployees() {
     isOpen: false,
     employee: null,
   });
+  const [uploadingDocs, setUploadingDocs] = useState<Record<string, boolean>>({});
+  const [deletingDocs, setDeletingDocs] = useState<Record<string, boolean>>({});
   const [formData, setFormData] = useState({
     // 1. EMPLOYEE DASHBOARD
     name: '',
@@ -272,6 +275,82 @@ export default function AdminEmployees() {
         title: 'Delete Failed',
         message: 'Failed to delete employee. Please try again.',
       });
+    }
+  };
+
+  const handleDocumentUpload = async (employeeId: string, documentType: string, file: File) => {
+    try {
+      setUploadingDocs(prev => ({ ...prev, [documentType]: true }));
+      
+      const response = await apiClient.uploadEmployeeDocument(employeeId, documentType, file);
+      
+      // Update form data if editing this employee
+      if (editingEmployee && editingEmployee._id === employeeId) {
+        setFormData(prev => ({
+          ...prev,
+          [documentType]: response.fileUrl
+        }));
+      }
+      
+      // Refresh employees list to show updated document
+      await fetchEmployees();
+      
+      setAlertModal({
+        isOpen: true,
+        type: 'success',
+        title: 'Document Uploaded',
+        message: `${documentType} uploaded successfully!`,
+      });
+    } catch (error: any) {
+      logger.error('Failed to upload document:', error);
+      setAlertModal({
+        isOpen: true,
+        type: 'error',
+        title: 'Upload Failed',
+        message: error.message || `Failed to upload ${documentType}. Please try again.`,
+      });
+    } finally {
+      setUploadingDocs(prev => ({ ...prev, [documentType]: false }));
+    }
+  };
+
+  const handleDocumentDelete = async (employeeId: string, documentType: string) => {
+    if (!confirm(`Are you sure you want to delete the ${documentType}?`)) {
+      return;
+    }
+
+    try {
+      setDeletingDocs(prev => ({ ...prev, [documentType]: true }));
+      
+      await apiClient.deleteEmployeeDocument(employeeId, documentType);
+      
+      // Update form data if editing this employee
+      if (editingEmployee && editingEmployee._id === employeeId) {
+        setFormData(prev => ({
+          ...prev,
+          [documentType]: ''
+        }));
+      }
+      
+      // Refresh employees list
+      await fetchEmployees();
+      
+      setAlertModal({
+        isOpen: true,
+        type: 'success',
+        title: 'Document Deleted',
+        message: `${documentType} deleted successfully!`,
+      });
+    } catch (error: any) {
+      logger.error('Failed to delete document:', error);
+      setAlertModal({
+        isOpen: true,
+        type: 'error',
+        title: 'Delete Failed',
+        message: error.message || `Failed to delete ${documentType}. Please try again.`,
+      });
+    } finally {
+      setDeletingDocs(prev => ({ ...prev, [documentType]: false }));
     }
   };
 
@@ -777,15 +856,99 @@ export default function AdminEmployees() {
               {/* 3. DOCUMENTATION & COMPLIANCE */}
               <div className="space-y-4 border-b border-border pb-6">
                 <h4 className="text-base font-semibold text-foreground">3. Documentation & Compliance</h4>
-                <p className="text-xs text-muted-foreground mb-4">Enter URLs or file paths for documents</p>
+                <p className="text-xs text-muted-foreground mb-4">Upload documents (PDF, DOC, DOCX, JPG, PNG). Files are stored securely in the cloud.</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><label className="block text-sm font-medium text-foreground mb-1">Resume / CV URL</label><input type="url" value={formData.resume} onChange={(e) => setFormData({...formData, resume: e.target.value})} className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://..." /></div>
-                  <div><label className="block text-sm font-medium text-foreground mb-1">Offer Letter (Signed) URL</label><input type="url" value={formData.offerLetter} onChange={(e) => setFormData({...formData, offerLetter: e.target.value})} className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://..." /></div>
-                  <div><label className="block text-sm font-medium text-foreground mb-1">Employee Agreement / NDA URL</label><input type="url" value={formData.employeeAgreement} onChange={(e) => setFormData({...formData, employeeAgreement: e.target.value})} className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://..." /></div>
-                  <div><label className="block text-sm font-medium text-foreground mb-1">NDA URL</label><input type="url" value={formData.nda} onChange={(e) => setFormData({...formData, nda: e.target.value})} className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://..." /></div>
-                  <div><label className="block text-sm font-medium text-foreground mb-1">Govt ID / Passport URL</label><input type="url" value={formData.govtId} onChange={(e) => setFormData({...formData, govtId: e.target.value})} className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://..." /></div>
-                  <div><label className="block text-sm font-medium text-foreground mb-1">Passport URL</label><input type="url" value={formData.passport} onChange={(e) => setFormData({...formData, passport: e.target.value})} className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://..." /></div>
-                  <div><label className="block text-sm font-medium text-foreground mb-1">Address Proof URL</label><input type="url" value={formData.addressProof} onChange={(e) => setFormData({...formData, addressProof: e.target.value})} className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://..." /></div>
+                  {[
+                    { key: 'resume', label: 'Resume / CV', required: true },
+                    { key: 'offerLetter', label: 'Offer Letter (Signed)', required: true },
+                    { key: 'employeeAgreement', label: 'Employee Agreement / NDA', required: true },
+                    { key: 'nda', label: 'NDA', required: false },
+                    { key: 'govtId', label: 'Govt ID / Passport', required: true },
+                    { key: 'passport', label: 'Passport', required: false },
+                    { key: 'addressProof', label: 'Address Proof', required: false },
+                  ].map(({ key, label, required }) => {
+                    const employeeId = editingEmployee?._id || '';
+                    const hasDocument = formData[key as keyof typeof formData];
+                    return (
+                      <div key={key} className="border border-border rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="block text-sm font-medium text-foreground">
+                            {label}
+                            {required && <span className="text-red-500 ml-1">*</span>}
+                          </label>
+                          {hasDocument && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                                <FiCheck className="h-3 w-3" />
+                                Uploaded
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => window.open(formData[key as keyof typeof formData] as string, '_blank')}
+                                className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                              >
+                                <FiDownload className="h-3 w-3" />
+                                View
+                              </button>
+                              {employeeId && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDocumentDelete(employeeId, key)}
+                                  disabled={deletingDocs[key]}
+                                  className="text-xs text-red-600 hover:text-red-700 flex items-center gap-1"
+                                >
+                                  {deletingDocs[key] ? (
+                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-600"></div>
+                                  ) : (
+                                    <FiTrash2 className="h-3 w-3" />
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        {employeeId ? (
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                if (file.size > 10 * 1024 * 1024) {
+                                  setAlertModal({
+                                    isOpen: true,
+                                    type: 'error',
+                                    title: 'File Too Large',
+                                    message: 'File size must be less than 10MB',
+                                  });
+                                  return;
+                                }
+                                handleDocumentUpload(employeeId, key, file);
+                                e.target.value = '';
+                              }
+                            }}
+                            disabled={uploadingDocs[key]}
+                            className="w-full text-sm"
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            value={formData[key as keyof typeof formData] as string}
+                            onChange={(e) => setFormData({...formData, [key]: e.target.value})}
+                            className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Will be available after employee is created"
+                            disabled
+                          />
+                        )}
+                        {uploadingDocs[key] && (
+                          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary"></div>
+                            Uploading...
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                   <div><label className="block text-sm font-medium text-foreground mb-1">PAN / Tax ID</label><input type="text" value={formData.pan} onChange={(e) => setFormData({...formData, pan: e.target.value})} className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="PAN number" /></div>
                   <div><label className="block text-sm font-medium text-foreground mb-1">Tax ID</label><input type="text" value={formData.taxId} onChange={(e) => setFormData({...formData, taxId: e.target.value})} className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Tax ID" /></div>
                 </div>

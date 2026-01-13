@@ -8,6 +8,7 @@ const User = require('../models/User');
 const Organization = require('../models/Organization');
 const { authenticateToken } = require('../middleware/auth');
 const emailService = require('../services/emailService');
+const { logDataChange, logCredentialAccess } = require('../middleware/auditLog');
 const multer = require('multer');
 
 // Memory storage for parsing (needs buffer access)
@@ -39,10 +40,20 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const userRole = req.user.role;
+    
+    // Debug logging
+    console.log('=== TOOLS GET REQUEST ===');
+    console.log('User ID:', userId);
+    console.log('User Role:', userRole);
+    console.log('Normalized Role:', (userRole || '').toLowerCase());
+    console.log('Request user object:', JSON.stringify(req.user, null, 2));
+    console.log('Is Admin?', userRole === 'admin');
+    console.log('Is Accountant?', userRole === 'accountant');
 
     // Get tools created by user
     const ownedTools = await Tool.find({ createdBy: userId })
       .populate('createdBy', 'name email')
+      .populate('organizationId', 'name')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -72,6 +83,7 @@ router.get('/', authenticateToken, async (req, res) => {
         if (validObjectIds.length > 0) {
           sharedTools = await Tool.find({ _id: { $in: validObjectIds } })
             .populate('createdBy', 'name email')
+            .populate('organizationId', 'name')
             .sort({ createdAt: -1 })
             .lean();
         }
@@ -103,11 +115,29 @@ router.get('/', authenticateToken, async (req, res) => {
     });
 
     let allTools = [];
-    if (userRole === 'admin') {
+    // Normalize role to lowercase for comparison
+    const normalizedRole = (userRole || '').toLowerCase();
+    console.log('Normalized role:', normalizedRole);
+    console.log('Role comparison - admin:', normalizedRole === 'admin');
+    console.log('Role comparison - accountant:', normalizedRole === 'accountant');
+    
+    if (normalizedRole === 'admin' || normalizedRole === 'accountant') {
+      // Both admins and accountants can see all tools/credentials
+      console.log('✅ User is admin or accountant, fetching all tools...');
       const adminTools = await Tool.find({})
         .populate('createdBy', 'name email')
+        .populate('organizationId', 'name')
         .sort({ createdAt: -1 })
         .lean();
+      
+      console.log('Total tools found in database:', adminTools.length);
+      
+      if (adminTools.length === 0) {
+        console.warn('⚠️ No tools found in database. This could mean:');
+        console.warn('1. No credentials have been created yet');
+        console.warn('2. Database connection issue');
+        console.warn('3. Tools collection is empty');
+      }
       
       allTools = adminTools.map(tool => {
         const toolId = tool._id.toString();
@@ -123,6 +153,9 @@ router.get('/', authenticateToken, async (req, res) => {
         return tool;
       });
     } else {
+      console.log('User is regular user, fetching owned and shared tools only...');
+      console.log('Owned tools:', ownedTools.length);
+      console.log('Shared tools:', sharedToolsWithInfo.length);
       const combined = [...ownedTools, ...sharedToolsWithInfo];
       const uniqueMap = new Map();
       combined.forEach(tool => {
@@ -139,6 +172,10 @@ router.get('/', authenticateToken, async (req, res) => {
       id: tool._id.toString()
     }));
 
+    console.log('=== TOOLS RESPONSE ===');
+    console.log('Returning', formattedTools.length, 'tools to user');
+    console.log('User role:', userRole);
+    console.log('First tool (if any):', formattedTools.length > 0 ? formattedTools[0] : 'No tools');
     res.json(formattedTools);
   } catch (error) {
     console.error('Error fetching tools:', error);
@@ -294,8 +331,17 @@ router.post('/import-excel', authenticateToken, uploadExcel.single('file'), asyn
 // Get single tool
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
-    const tool = await Tool.findById(req.params.id).populate('createdBy', 'name email');
+    const tool = await Tool.findById(req.params.id)
+      .populate('createdBy', 'name email')
+      .populate('organizationId', 'name');
     if (!tool) return res.status(404).json({ message: 'Tool not found' });
+    
+    // Log credential access
+    await logCredentialAccess(req, tool._id, 'credential_viewed', {
+      toolName: tool.name,
+      category: tool.category
+    });
+    
     res.json(tool);
   } catch (error) {
     console.error('Error fetching tool:', error);
@@ -306,11 +352,11 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Create tool
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { name, description, category, username, password, apiKey, notes, tags, isPaid, hasAutopay, price, billingPeriod, has2FA, twoFactorMethod, status } = req.body;
+    const { name, description, category, project, department, client, username, password, apiKey, notes, tags, isPaid, hasAutopay, price, billingPeriod, has2FA, twoFactorMethod, status } = req.body;
     if (!name) return res.status(400).json({ message: 'Tool name is required' });
-    
+
     const tool = new Tool({
-      name, description, category, username, password, apiKey, notes,
+      name, description, category, project, department, client, username, password, apiKey, notes,
       tags: Array.isArray(tags) ? tags : (tags ? tags.split(',').map(t => t.trim()) : []),
       isPaid: isPaid || false,
       hasAutopay: hasAutopay || false,
@@ -324,6 +370,23 @@ router.post('/', authenticateToken, async (req, res) => {
     
     await tool.save();
     await tool.populate('createdBy', 'name email');
+    
+    // Log tool creation
+    await logDataChange(
+      req,
+      'tool_created',
+      'Tool',
+      tool._id,
+      null,
+      tool.toObject(),
+      {
+        toolName: tool.name,
+        category: tool.category,
+        isPaid: tool.isPaid,
+        has2FA: tool.has2FA
+      }
+    );
+    
     res.status(201).json(tool);
   } catch (error) {
     console.error('Error creating tool:', error);
@@ -336,14 +399,20 @@ router.patch('/:id', authenticateToken, async (req, res) => {
   try {
     const tool = await Tool.findById(req.params.id);
     if (!tool) return res.status(404).json({ message: 'Tool not found' });
-    if (tool.createdBy.toString() !== req.user.userId && req.user.role !== 'admin') {
+    if (tool.createdBy.toString() !== req.user.userId && req.user.role !== 'admin' && req.user.role !== 'accountant') {
       return res.status(403).json({ message: 'Not authorized to update this tool' });
     }
     
-    const { name, description, category, username, password, apiKey, notes, tags, isPaid, hasAutopay, price, billingPeriod, has2FA, twoFactorMethod, status } = req.body;
+    // Get old data for change tracking
+    const oldTool = tool.toObject();
+    
+    const { name, description, category, project, department, client, username, password, apiKey, notes, tags, isPaid, hasAutopay, price, billingPeriod, has2FA, twoFactorMethod, status } = req.body;
     if (name) tool.name = name;
     if (description !== undefined) tool.description = description;
     if (category !== undefined) tool.category = category;
+    if (project !== undefined) tool.project = project;
+    if (department !== undefined) tool.department = department;
+    if (client !== undefined) tool.client = client;
     if (username !== undefined) tool.username = username;
     if (password !== undefined) tool.password = password;
     if (apiKey !== undefined) tool.apiKey = apiKey;
@@ -365,6 +434,22 @@ router.patch('/:id', authenticateToken, async (req, res) => {
     
     await tool.save();
     await tool.populate('createdBy', 'name email');
+    
+    // Log tool update with change tracking
+    const newTool = tool.toObject();
+    await logDataChange(
+      req,
+      'tool_updated',
+      'Tool',
+      tool._id,
+      oldTool,
+      newTool,
+      {
+        toolName: tool.name,
+        updatedFields: Object.keys(req.body)
+      }
+    );
+    
     res.json(tool);
   } catch (error) {
     console.error('Error updating tool:', error);
@@ -388,11 +473,26 @@ router.delete('/delete-all', authenticateToken, async (req, res) => {
 // Delete tool
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
-    const tool = await Tool.findById(req.params.id);
+    const tool = await Tool.findById(req.params.id).lean();
     if (!tool) return res.status(404).json({ message: 'Tool not found' });
     if (tool.createdBy.toString() !== req.user.userId && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Not authorized to delete this tool' });
     }
+    
+    // Log deletion before deleting
+    await logDataChange(
+      req,
+      'tool_deleted',
+      'Tool',
+      tool._id,
+      tool,
+      null,
+      {
+        toolName: tool.name,
+        category: tool.category
+      }
+    );
+    
     await ToolShare.deleteMany({ toolId: req.params.id });
     await Tool.findByIdAndDelete(req.params.id);
     res.json({ message: 'Tool deleted successfully' });
@@ -429,6 +529,23 @@ router.post('/:id/share', authenticateToken, async (req, res) => {
     if (sharer && targetUser) {
       emailService.sendCredentialSharedNotification(targetUser.email, targetUser.name, tool.name, sharer.name, permission || 'view').catch(err => console.error(err));
     }
+    
+    // Log tool sharing
+    await logDataChange(
+      req,
+      'tool_shared',
+      'Tool',
+      tool._id,
+      null,
+      { sharedWith: userId, permission: permission || 'view' },
+      {
+        toolName: tool.name,
+        sharedWithUserId: userId,
+        sharedWithUserName: targetUser.name,
+        sharedWithUserEmail: targetUser.email,
+        permission: permission || 'view'
+      }
+    );
 
     res.json({ message: 'Credential shared successfully', share });
   } catch (error) {
@@ -457,7 +574,11 @@ router.delete('/:id/share/:userId', authenticateToken, async (req, res) => {
 // Get users for sharing
 router.get('/share/users', authenticateToken, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admin access required' });
+    // Allow both admin and accountant roles to access this endpoint
+    // Accountants won't use it in read-only mode, but this prevents 403 errors
+    if (req.user.role !== 'admin' && req.user.role !== 'accountant') {
+      return res.status(403).json({ message: 'Admin or accountant access required' });
+    }
     const users = await User.find({ role: 'user' }).select('name email').sort({ name: 1 }).lean();
     res.json(users.map(u => ({ id: u._id.toString(), name: u.name, email: u.email })));
   } catch (error) {

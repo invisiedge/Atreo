@@ -5,43 +5,21 @@
 
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
 const Admin = require('../models/Admin');
 const OTP = require('../models/OTP');
 const Permission = require('../models/Permission');
 const { validateLogin, validateSignup } = require('../middleware/validation');
-const { logLoginAttempt, logOTPVerification } = require('../middleware/auditLog');
+const { logLoginAttempt, logOTPVerification, logLogout } = require('../middleware/auditLog');
+const { authLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
-
-// Rate limiting for login attempts
-const loginRateLimiter = rateLimit({
-  windowMs: parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX) || 5, // Limit each IP to 5 login attempts
-  message: {
-    error: 'Too many login attempts',
-    message: 'Too many login attempts from this IP, please try again later.',
-    retryAfter: Math.ceil((parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000) / 1000 / 60) + ' minutes'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    res.status(429).json({
-      error: 'Too many login attempts',
-      message: 'Too many login attempts from this IP, please try again later.',
-      retryAfter: Math.ceil((parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000) / 1000 / 60) + ' minutes'
-    });
-  },
-  skipSuccessfulRequests: false,
-  skipFailedRequests: false,
-});
 
 /**
  * POST /api/auth/login
  * User login with rate limiting and validation
  */
-router.post('/login', loginRateLimiter, validateLogin, async (req, res) => {
+router.post('/login', authLimiter, validateLogin, async (req, res) => {
   try {
     const email = req.body.email?.toLowerCase().trim();
     const { password } = req.body;
@@ -49,18 +27,20 @@ router.post('/login', loginRateLimiter, validateLogin, async (req, res) => {
     // Find user by email
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
+      await logLoginAttempt(req, null, false, 'User not found');
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     
     // Check if user is active
     if (!user.isActive) {
+      await logLoginAttempt(req, user, false, 'Account is deactivated');
       return res.status(401).json({ message: 'Account is deactivated' });
     }
     
     // Compare password
     const isValidPassword = await user.comparePassword(password);
     if (!isValidPassword) {
-      await logLoginAttempt(req, false, 'Invalid password');
+      await logLoginAttempt(req, null, false, 'Invalid password');
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     
@@ -68,8 +48,8 @@ router.post('/login', loginRateLimiter, validateLogin, async (req, res) => {
     user.lastLogin = new Date();
     await user.save();
     
-    // Log successful login
-    await logLoginAttempt(req, true);
+    // Log successful login with user details
+    await logLoginAttempt(req, user, true);
     
     // Fetch permissions from Permission model (3-layer structure)
     const permission = await Permission.findOne({ userId: user._id });
@@ -191,11 +171,11 @@ router.post('/login', loginRateLimiter, validateLogin, async (req, res) => {
  * POST /api/auth/signup
  * User registration with validation
  */
-router.post('/signup', validateSignup, async (req, res) => {
+router.post('/signup', authLimiter, validateSignup, async (req, res) => {
   try {
     const email = req.body.email?.toLowerCase().trim();
     const { name, password, role: requestedRole = 'user', adminRole: requestedAdminRole } = req.body;
-    
+
     // Check if user already exists in User or Admin collection
     const [existingUser, existingAdmin] = await Promise.all([
       User.findOne({ email }),
@@ -205,12 +185,20 @@ router.post('/signup', validateSignup, async (req, res) => {
     if (existingUser || existingAdmin) {
       return res.status(400).json({ message: 'User already exists with this email' });
     }
-    
-    // Determine roles
-    const role = requestedRole === 'admin' ? 'admin' : 'user';
+
+    // Determine roles - support accountant role
+    let role = 'user';
+    if (requestedRole === 'admin') {
+      role = 'admin';
+    } else if (requestedRole === 'accountant') {
+      role = 'accountant';
+    } else if (requestedRole === 'employee') {
+      role = 'employee';
+    }
+
     const adminRoleValue = role === 'admin' && requestedAdminRole === 'super-admin' ? 'super-admin' : 'admin';
 
-    // Create new user
+    // Create new user - removed legacy permissions field
     const user = new User({
       name,
       email,
@@ -218,7 +206,7 @@ router.post('/signup', validateSignup, async (req, res) => {
       role,
       isActive: true,
       emailVerified: true,
-      permissions: []
+      permissions: [] // Empty array - use Permission model instead
     });
     
     await user.save();
@@ -304,8 +292,31 @@ router.post('/signup', validateSignup, async (req, res) => {
  * POST /api/auth/logout
  * User logout
  */
-router.post('/logout', (req, res) => {
-  res.json({ message: 'Logged out successfully' });
+router.post('/logout', async (req, res) => {
+  try {
+    // Get user from token if available
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    let user = null;
+    if (token && process.env.JWT_SECRET) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        user = await User.findById(decoded.userId);
+      } catch (error) {
+        // Token invalid or expired, continue with logout
+      }
+    }
+    
+    // Log logout
+    if (user) {
+      await logLogout(req, user);
+    }
+    
+    res.json({ message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.json({ message: 'Logged out successfully' }); // Always return success for logout
+  }
 });
 
 /**

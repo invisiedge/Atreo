@@ -1,15 +1,19 @@
 // @ts-nocheck
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  FiClock, 
-  FiCheckCircle, 
-  FiXCircle, 
+import {
+  FiClock,
+  FiCheckCircle,
+  FiXCircle,
   FiDollarSign,
   FiTrendingUp,
   FiActivity,
   FiArrowRight,
   FiCalendar,
-  FiFileText
+  FiFileText,
+  FiKey,
+  FiShare2,
+  FiDownload,
+  FiBarChart2
 } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { DashboardService, type UserDashboardStats } from '../../services/dashboardService';
@@ -101,99 +105,249 @@ export default function UserDashboard() {
             Your personal financial command center
           </p>
         </div>
-        <Button className="rounded-2xl px-8 py-6 shadow-xl shadow-primary/20 hover:shadow-primary/30 transition-all active:scale-95 group">
-          New Submission <FiArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" />
-        </Button>
+        {/* Only show New Submission button for users and employees (not accountants) */}
+        {user?.role !== 'accountant' && (
+          <Button className="rounded-2xl px-8 py-6 shadow-xl shadow-primary/20 hover:shadow-primary/30 transition-all active:scale-95 group">
+            New Submission <FiArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" />
+          </Button>
+        )}
       </div>
 
       {/* Modern Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <MetricCard 
-          title="Total Earnings"
-          value={`$${(stats?.totalEarnings || 0).toLocaleString()}`}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+        <MetricCard
+          title="Total Spend"
+          value={`$${(stats?.spending?.total || 0).toLocaleString()}`}
           icon={<FiDollarSign className="text-white" />}
           color="from-blue-600 to-indigo-600"
-          subtitle="All-time approved payments"
+          subtitle="Total subscription spending"
         />
-        <MetricCard 
-          title="In Review"
-          value={stats?.pendingRequests || 0}
-          icon={<FiClock className="text-white" />}
-          color="from-amber-500 to-orange-600"
-          subtitle="Awaiting administrative approval"
+        <MetricCard
+          title="Credentials"
+          value={stats?.credentials?.total || 0}
+          icon={<FiKey className="text-white" />}
+          color="from-purple-600 to-pink-600"
+          subtitle={`${stats?.credentials?.active || 0} active credentials`}
         />
-        <MetricCard 
-          title="Approved"
-          value={stats?.approvedRequests || 0}
+        <MetricCard
+          title="Shared Access"
+          value={stats?.sharing?.sharedWithMe || 0}
+          icon={<FiShare2 className="text-white" />}
+          color="from-teal-500 to-cyan-600"
+          subtitle="Credentials shared with you"
+        />
+        <MetricCard
+          title="Total Earnings"
+          value={`$${(stats?.submissions?.totalEarnings || 0).toLocaleString()}`}
           icon={<FiCheckCircle className="text-white" />}
-          color="from-emerald-500 to-teal-600"
-          subtitle="Requests successfully processed"
+          color="from-emerald-500 to-green-600"
+          subtitle="All-time approved payments"
         />
       </div>
 
-      {/* Activity Section */}
-      <div className="grid grid-cols-1 gap-8">
+
+      {/* Credentials Breakdown */}
+      {stats?.credentials && stats.credentials.total > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* By Category */}
+          {stats.credentials.byCategory && stats.credentials.byCategory.length > 0 && (
+            <Card className="rounded-[2.5rem] border-border shadow-2xl overflow-hidden hover:shadow-3xl transition-shadow duration-300">
+              <CardHeader className="p-8 pb-4">
+                <CardTitle className="text-xl font-bold flex items-center gap-2">
+                  <FiKey className="text-primary" /> By Category
+                </CardTitle>
+                <CardDescription>Credentials organized by category</CardDescription>
+              </CardHeader>
+              <CardContent className="p-8 pt-4">
+                <div className="space-y-3">
+                  {stats.credentials.byCategory.slice(0, 5).map((cat, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-muted/20 rounded-xl">
+                      <span className="font-medium text-sm">{cat.name}</span>
+                      <Badge variant="secondary" className="rounded-full">{cat.count}</Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* By Project */}
+          {stats.credentials.byProject && stats.credentials.byProject.length > 0 && (
+            <Card className="rounded-[2.5rem] border-border shadow-2xl overflow-hidden hover:shadow-3xl transition-shadow duration-300">
+              <CardHeader className="p-8 pb-4">
+                <CardTitle className="text-xl font-bold flex items-center gap-2">
+                  <FiFileText className="text-primary" /> By Project
+                </CardTitle>
+                <CardDescription>Credentials organized by project</CardDescription>
+              </CardHeader>
+              <CardContent className="p-8 pt-4">
+                <div className="space-y-3">
+                  {stats.credentials.byProject.slice(0, 5).map((proj, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-muted/20 rounded-xl">
+                      <span className="font-medium text-sm">{proj.name}</span>
+                      <Badge variant="secondary" className="rounded-full">{proj.count}</Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* By Department */}
+          {stats.credentials.byDepartment && stats.credentials.byDepartment.length > 0 && (
+            <Card className="rounded-[2.5rem] border-border shadow-2xl overflow-hidden hover:shadow-3xl transition-shadow duration-300">
+              <CardHeader className="p-8 pb-4">
+                <CardTitle className="text-xl font-bold flex items-center gap-2">
+                  <FiActivity className="text-primary" /> By Department
+                </CardTitle>
+                <CardDescription>Credentials organized by department</CardDescription>
+              </CardHeader>
+              <CardContent className="p-8 pt-4">
+                <div className="space-y-3">
+                  {stats.credentials.byDepartment.slice(0, 5).map((dept, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-muted/20 rounded-xl">
+                      <span className="font-medium text-sm">{dept.name}</span>
+                      <Badge variant="secondary" className="rounded-full">{dept.count}</Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Recent Invoices */}
+      {stats?.recentInvoices && stats.recentInvoices.length > 0 && (
         <Card className="rounded-[2.5rem] border-border shadow-2xl overflow-hidden hover:shadow-3xl transition-shadow duration-300">
           <CardHeader className="p-8 pb-4">
             <div className="flex justify-between items-center">
               <div>
                 <CardTitle className="text-2xl font-bold flex items-center gap-2">
-                   <FiFileText className="text-primary" /> Submission History
+                  <FiFileText className="text-primary" /> Recent Invoices
                 </CardTitle>
-                <CardDescription className="text-base">Real-time status of your payment requests</CardDescription>
+                <CardDescription className="text-base">Your 10 most recent invoices</CardDescription>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => window.location.href = '/api/dashboard/user-export?type=invoices&format=csv'}
+                >
+                  <FiDownload className="mr-2" /> Export CSV
+                </Button>
               </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">
-             {submissions.length === 0 ? (
-              <div className="p-20 text-center space-y-4">
-                <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mx-auto opacity-50">
-                   <FiFileText className="w-10 h-10" />
-                </div>
-                <p className="text-muted-foreground font-medium">No activity found. Start by submitting your first request.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-muted/30">
-                      <th className="px-8 py-5 text-left text-xs font-bold text-muted-foreground uppercase tracking-widest">Amount</th>
-                      <th className="px-8 py-5 text-left text-xs font-bold text-muted-foreground uppercase tracking-widest">Description</th>
-                      <th className="px-8 py-5 text-left text-xs font-bold text-muted-foreground uppercase tracking-widest">Status</th>
-                      <th className="px-8 py-5 text-left text-xs font-bold text-muted-foreground uppercase tracking-widest">Submitted</th>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-muted/30">
+                    <th className="px-8 py-5 text-left text-xs font-bold text-muted-foreground uppercase tracking-widest">Invoice #</th>
+                    <th className="px-8 py-5 text-left text-xs font-bold text-muted-foreground uppercase tracking-widest">Provider</th>
+                    <th className="px-8 py-5 text-left text-xs font-bold text-muted-foreground uppercase tracking-widest">Amount</th>
+                    <th className="px-8 py-5 text-left text-xs font-bold text-muted-foreground uppercase tracking-widest">Status</th>
+                    <th className="px-8 py-5 text-left text-xs font-bold text-muted-foreground uppercase tracking-widest">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {stats.recentInvoices.map((invoice) => (
+                    <tr key={invoice._id} className="hover:bg-accent/5 transition-colors group cursor-default">
+                      <td className="px-8 py-6">
+                        <span className="font-medium text-foreground">{invoice.invoiceNumber}</span>
+                      </td>
+                      <td className="px-8 py-6">
+                        <span className="font-medium text-foreground">{invoice.provider}</span>
+                      </td>
+                      <td className="px-8 py-6">
+                        <span className="text-lg font-bold text-foreground">
+                          ${invoice.amount.toLocaleString()} {invoice.currency}
+                        </span>
+                      </td>
+                      <td className="px-8 py-6">
+                        {getStatusBadge(invoice.status)}
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="flex items-center gap-2 text-muted-foreground font-medium text-sm">
+                          <FiCalendar className="text-primary/60" />
+                          {formatDate(invoice.billingDate)}
+                        </div>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/50">
-                    {submissions.map((sub) => (
-                      <tr key={sub.id} className="hover:bg-accent/5 transition-colors group cursor-default">
-                        <td className="px-8 py-6">
-                          <span className="text-lg font-bold text-foreground tracking-tight">
-                            ${sub.totalAmount.toLocaleString()}
-                          </span>
-                        </td>
-                        <td className="px-8 py-6">
-                           <div className="max-w-md">
-                             <p className="text-sm font-medium text-foreground line-clamp-1">{sub.description}</p>
-                           </div>
-                        </td>
-                        <td className="px-8 py-6">
-                          {getStatusBadge(sub.status)}
-                        </td>
-                        <td className="px-8 py-6">
-                           <div className="flex items-center gap-2 text-muted-foreground font-medium text-sm">
-                             <FiCalendar className="text-primary/60" />
-                             {formatDate(sub.submittedAt)}
-                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </CardContent>
         </Card>
-      </div>
+      )}
+
+      {/* Activity Section - Only show for users and employees (not accountants) */}
+      {user?.role !== 'accountant' && (
+        <div className="grid grid-cols-1 gap-8">
+          <Card className="rounded-[2.5rem] border-border shadow-2xl overflow-hidden hover:shadow-3xl transition-shadow duration-300">
+            <CardHeader className="p-8 pb-4">
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                     <FiFileText className="text-primary" /> Submission History
+                  </CardTitle>
+                  <CardDescription className="text-base">Real-time status of your payment requests</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+               {submissions.length === 0 ? (
+                <div className="p-20 text-center space-y-4">
+                  <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mx-auto opacity-50">
+                     <FiFileText className="w-10 h-10" />
+                  </div>
+                  <p className="text-muted-foreground font-medium">No activity found. Start by submitting your first request.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-muted/30">
+                        <th className="px-8 py-5 text-left text-xs font-bold text-muted-foreground uppercase tracking-widest">Amount</th>
+                        <th className="px-8 py-5 text-left text-xs font-bold text-muted-foreground uppercase tracking-widest">Description</th>
+                        <th className="px-8 py-5 text-left text-xs font-bold text-muted-foreground uppercase tracking-widest">Status</th>
+                        <th className="px-8 py-5 text-left text-xs font-bold text-muted-foreground uppercase tracking-widest">Submitted</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50">
+                      {submissions.map((sub) => (
+                        <tr key={sub.id} className="hover:bg-accent/5 transition-colors group cursor-default">
+                          <td className="px-8 py-6">
+                            <span className="text-lg font-bold text-foreground tracking-tight">
+                              ${sub.totalAmount.toLocaleString()}
+                            </span>
+                          </td>
+                          <td className="px-8 py-6">
+                             <div className="max-w-md">
+                               <p className="text-sm font-medium text-foreground line-clamp-1">{sub.description}</p>
+                             </div>
+                          </td>
+                          <td className="px-8 py-6">
+                            {getStatusBadge(sub.status)}
+                          </td>
+                          <td className="px-8 py-6">
+                             <div className="flex items-center gap-2 text-muted-foreground font-medium text-sm">
+                               <FiCalendar className="text-primary/60" />
+                               {formatDate(sub.submittedAt)}
+                             </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

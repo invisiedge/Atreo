@@ -7,6 +7,7 @@ const Tool = require('../models/Tool');
 const { authenticateToken } = require('../middleware/auth');
 const storageService = require('../services/storageService');
 const invoiceParser = require('../services/invoiceParser');
+const { logDataChange } = require('../middleware/auditLog');
 const multer = require('multer');
 const XLSX = require('xlsx');
 // Security: Validate and sanitize Excel file inputs to prevent prototype pollution
@@ -59,7 +60,8 @@ router.get('/', authenticateToken, async (req, res) => {
       'notes.type': { $ne: 'employee_contractor' }
     };
     
-    if (userRole !== 'admin') {
+    // Accountants and admins can see all invoices
+    if (userRole !== 'admin' && userRole !== 'accountant') {
       const user = await User.findById(userId);
       if (user && user.organizationId) {
         query.organizationId = user.organizationId;
@@ -130,7 +132,8 @@ router.get('/summary', authenticateToken, async (req, res) => {
       'notes.type': { $ne: 'employee_contractor' }
     };
 
-    if (userRole !== 'admin') {
+    // Accountants and admins can see all invoices
+    if (userRole !== 'admin' && userRole !== 'accountant') {
       const user = await User.findById(userId);
       if (user && user.organizationId) {
         query.organizationId = user.organizationId;
@@ -203,6 +206,10 @@ router.post('/parse', authenticateToken, uploadForParsing.single('file'), async 
 // Import from Excel
 router.post('/import-excel', authenticateToken, uploadExcel.single('file'), async (req, res) => {
   try {
+    // Only admin can import invoices
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required to import invoices' });
+    }
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
     // Security: Read with safe options to mitigate prototype pollution
     const workbook = XLSX.read(req.file.buffer, { 
@@ -294,6 +301,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Create invoice
 router.post('/', authenticateToken, uploadForParsing.single('file'), async (req, res) => {
   try {
+    // Users can create invoices for their own tools/credentials, admins can create for anyone
     const { invoiceNumber, amount, provider, billingDate, dueDate, category, organizationId, toolIds, currency } = req.body;
     
     let fileUrl = null;
@@ -324,6 +332,23 @@ router.post('/', authenticateToken, uploadForParsing.single('file'), async (req,
       toolIds: Array.isArray(toolIds) ? toolIds : (toolIds ? [toolIds] : [])
     });
 
+    // Log invoice creation
+    await logDataChange(
+      req,
+      'invoice_created',
+      'Invoice',
+      invoice._id,
+      null,
+      invoice.toObject(),
+      {
+        invoiceNumber: invoice.invoiceNumber,
+        amount: invoice.amount,
+        currency: invoice.currency,
+        provider: invoice.provider,
+        status: invoice.status
+      }
+    );
+
     res.status(201).json(invoice);
   } catch (error) {
     console.error('Error creating invoice:', error);
@@ -341,7 +366,13 @@ router.put('/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Invoice not found' });
     }
 
-    // Check permissions - admin can update any invoice, users can only update their own
+    // Get old invoice data for change tracking
+    const oldInvoice = invoice.toObject();
+
+    // Check permissions - only admin can update invoices, accountants have read-only access
+    if (req.user.role === 'accountant') {
+      return res.status(403).json({ message: 'Accountants have read-only access to invoices' });
+    }
     if (req.user.role !== 'admin' && invoice.uploadedBy.toString() !== req.user.userId) {
       return res.status(403).json({ message: 'Access denied' });
     }
@@ -380,7 +411,32 @@ router.put('/:id', authenticateToken, async (req, res) => {
       .populate('uploadedBy', 'name email')
       .populate('approvedBy', 'name email')
       .populate('organizationId', 'name domain')
-      .populate('toolIds', 'name category');
+      .populate('toolIds', 'name category')
+      .lean();
+
+    // Determine action type based on status change
+    let actionType = 'invoice_updated';
+    if (status === 'approved' && oldInvoice.status !== 'approved') {
+      actionType = 'invoice_approved';
+    } else if (status === 'rejected' && oldInvoice.status !== 'rejected') {
+      actionType = 'invoice_rejected';
+    }
+
+    // Log invoice update with change tracking
+    await logDataChange(
+      req,
+      actionType,
+      'Invoice',
+      updatedInvoice._id,
+      oldInvoice,
+      updatedInvoice,
+      {
+        invoiceNumber: updatedInvoice.invoiceNumber,
+        amount: updatedInvoice.amount,
+        status: updatedInvoice.status,
+        updatedFields: Object.keys(updateData)
+      }
+    );
 
     res.json(updatedInvoice);
   } catch (error) {
@@ -424,11 +480,32 @@ router.post('/:id/reject', authenticateToken, async (req, res) => {
 // Delete
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
-    const invoice = await Invoice.findById(req.params.id);
+    const invoice = await Invoice.findById(req.params.id).lean();
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+    // Accountants cannot delete invoices
+    if (req.user.role === 'accountant') {
+      return res.status(403).json({ message: 'Accountants have read-only access to invoices' });
+    }
     if (req.user.role !== 'admin' && invoice.uploadedBy.toString() !== req.user.userId) {
       return res.status(403).json({ message: 'Access denied' });
     }
+    
+    // Log deletion before deleting
+    await logDataChange(
+      req,
+      'invoice_deleted',
+      'Invoice',
+      invoice._id,
+      invoice,
+      null,
+      {
+        invoiceNumber: invoice.invoiceNumber,
+        amount: invoice.amount,
+        provider: invoice.provider,
+        status: invoice.status
+      }
+    );
+    
     await Invoice.findByIdAndDelete(req.params.id);
     res.json({ message: 'Invoice deleted successfully' });
   } catch (error) {

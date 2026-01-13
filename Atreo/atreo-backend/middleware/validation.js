@@ -1,9 +1,30 @@
 /**
  * Input Validation Middleware
  * Provides request validation for API endpoints
+ * Implements OWASP best practices for input validation and sanitization
  */
 
 const { body, param, query, validationResult } = require('express-validator');
+
+/**
+ * Middleware to sanitize and limit request body fields
+ * Prevents parameter pollution and unexpected field injection
+ * @param {Array} allowedFields - Array of allowed field names
+ */
+const sanitizeBody = (allowedFields) => {
+  return (req, res, next) => {
+    if (req.body && typeof req.body === 'object') {
+      const sanitized = {};
+      allowedFields.forEach(field => {
+        if (req.body.hasOwnProperty(field)) {
+          sanitized[field] = req.body[field];
+        }
+      });
+      req.body = sanitized;
+    }
+    next();
+  };
+};
 
 /**
  * Handle validation errors
@@ -31,29 +52,40 @@ const validateLogin = [
   body('email')
     .isEmail()
     .normalizeEmail()
-    .withMessage('Valid email is required'),
+    .isLength({ max: 100 })
+    .withMessage('Valid email is required (max 100 characters)'),
   body('password')
-    .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters long'),
+    .isLength({ min: 6, max: 128 })
+    .withMessage('Password must be between 6 and 128 characters long'),
   handleValidationErrors
 ];
 
 const validateSignup = [
   body('name')
     .trim()
+    .escape() // Prevent XSS
     .isLength({ min: 2, max: 50 })
-    .withMessage('Name must be between 2 and 50 characters'),
+    .withMessage('Name must be between 2 and 50 characters')
+    .matches(/^[a-zA-Z\s'-]+$/)
+    .withMessage('Name can only contain letters, spaces, hyphens, and apostrophes'),
   body('email')
     .isEmail()
     .normalizeEmail()
-    .withMessage('Valid email is required'),
+    .isLength({ max: 100 })
+    .withMessage('Valid email is required (max 100 characters)'),
   body('password')
-    .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters long'),
+    .isLength({ min: 8, max: 128 })
+    .withMessage('Password must be between 8 and 128 characters long')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
   body('role')
     .optional()
-    .isIn(['user', 'admin'])
-    .withMessage('Role must be either user or admin'),
+    .isIn(['user', 'admin', 'accountant', 'employee'])
+    .withMessage('Role must be one of: user, admin, accountant, employee'),
+  body('adminRole')
+    .optional()
+    .isIn(['admin', 'super-admin'])
+    .withMessage('Admin role must be either admin or super-admin'),
   handleValidationErrors
 ];
 
@@ -194,6 +226,7 @@ const validatePagination = [
 ];
 
 module.exports = {
+  sanitizeBody,
   validateLogin,
   validateSignup,
   validateUserUpdate,

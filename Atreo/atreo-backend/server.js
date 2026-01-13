@@ -16,6 +16,7 @@ if (!process.env.JWT_SECRET) {
 
 const connectDB = require('./config/database');
 const { authenticateToken } = require('./middleware/auth');
+const { globalLimiter } = require('./middleware/rateLimiter');
 const routes = require('./routes');
 
 const app = express();
@@ -68,8 +69,11 @@ app.use(cors({
 }));
 
 app.use(morgan('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' })); // Limit payload size to prevent DoS
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Apply global rate limiting to all requests
+app.use(globalLimiter);
 
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
