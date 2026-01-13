@@ -90,6 +90,26 @@ export class BaseApiClient {
           errorData: errorData
         });
 
+        // Handle token expiration (401 Unauthorized)
+        if (response.status === 401) {
+          const errorCode = (errorData as { code?: string })?.code;
+          if (errorCode === 'TOKEN_EXPIRED' || (errorData as { message?: string })?.message?.toLowerCase().includes('expired')) {
+            // Clear token from localStorage
+            const STORAGE_KEYS = { TOKEN: 'token', USER: 'user' };
+            if (typeof localStorage !== 'undefined') {
+              localStorage.removeItem(STORAGE_KEYS.TOKEN);
+              localStorage.removeItem(STORAGE_KEYS.USER);
+            }
+            const expiredError = new Error(
+              (errorData as { message?: string })?.message || 'Your session has expired. Please log in again.'
+            );
+            (expiredError as Error & { status: number; code: string; response: { data: Record<string, unknown> } }).status = 401;
+            (expiredError as Error & { status: number; code: string; response: { data: Record<string, unknown> } }).code = 'TOKEN_EXPIRED';
+            (expiredError as Error & { status: number; code: string; response: { data: Record<string, unknown> } }).response = { data: errorData };
+            throw expiredError;
+          }
+        }
+
         // Handle permission denied (403 Forbidden)
         // This happens when sidebar shows item but backend blocks access
         if (response.status === 403) {

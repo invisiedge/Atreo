@@ -47,14 +47,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           // No token, clear Zustand store
           useAuthStore.getState().setUser(null);
         }
-      } catch (error) {
+      } catch (error: any) {
         logger.error('Failed to initialize auth:', error);
-        // Clear invalid token
-        localStorage.removeItem(STORAGE_KEYS.TOKEN);
-        localStorage.removeItem(STORAGE_KEYS.USER);
         
-        // Clear Zustand store
-        useAuthStore.getState().setUser(null);
+        // Handle token expiration specifically
+        if (error.status === 401 || error.code === 'TOKEN_EXPIRED' || error.message?.includes('expired')) {
+          // Token expired - clear it and let user log in again
+          localStorage.removeItem(STORAGE_KEYS.TOKEN);
+          localStorage.removeItem(STORAGE_KEYS.USER);
+          useAuthStore.getState().setUser(null);
+        } else {
+          // Other errors - also clear token
+          localStorage.removeItem(STORAGE_KEYS.TOKEN);
+          localStorage.removeItem(STORAGE_KEYS.USER);
+          useAuthStore.getState().setUser(null);
+        }
       } finally {
         setIsLoading(false);
         useAuthStore.getState().setLoading(false);

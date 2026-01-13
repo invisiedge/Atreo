@@ -335,7 +335,24 @@ router.get('/me', async (req, res) => {
       return res.status(401).json({ message: 'No token provided' });
     }
     
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      if (err.name === 'TokenExpiredError') {
+        return res.status(401).json({ 
+          message: 'Token expired', 
+          code: 'TOKEN_EXPIRED',
+          expiredAt: err.expiredAt 
+        });
+      } else if (err.name === 'JsonWebTokenError') {
+        return res.status(401).json({ 
+          message: 'Invalid token', 
+          code: 'INVALID_TOKEN' 
+        });
+      }
+      throw err;
+    }
     const user = await User.findById(decoded.userId);
     
     if (!user || !user.isActive) {
@@ -376,7 +393,23 @@ router.get('/me', async (req, res) => {
     res.json({ user: userData });
   } catch (error) {
     console.error('Get current user error:', error);
-    res.status(401).json({ message: 'Invalid token' });
+    
+    // Handle JWT errors that weren't caught in the try block
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ 
+        message: 'Token expired. Please log in again.', 
+        code: 'TOKEN_EXPIRED',
+        expiredAt: error.expiredAt 
+      });
+    } else if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ 
+        message: 'Invalid token', 
+        code: 'INVALID_TOKEN' 
+      });
+    }
+    
+    // Generic error handler
+    res.status(401).json({ message: 'Authentication failed' });
   }
 });
 
