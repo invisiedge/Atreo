@@ -7,7 +7,8 @@ import {
   FiPieChart,
   FiBarChart2,
   FiDownload,
-  FiRefreshCw
+  FiRefreshCw,
+  FiCalendar
 } from 'react-icons/fi';
 import {
   Chart as ChartJS,

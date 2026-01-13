@@ -113,7 +113,7 @@ const EmployeeDashboard: React.FC = () => {
           <div className="flex-1">
             <div className="text-sm text-gray-500">Total Earnings</div>
             <div className="text-2xl font-semibold text-foreground mt-2">
-              ${stats?.totalEarnings?.toLocaleString() || '0'}
+              ${stats?.submissions?.totalEarnings?.toLocaleString() || '0'}
             </div>
           </div>
         </div>
@@ -125,7 +125,7 @@ const EmployeeDashboard: React.FC = () => {
           <div className="flex-1">
             <div className="text-sm text-gray-500">Pending Requests</div>
             <div className="text-2xl font-semibold text-foreground mt-2">
-              {stats?.pendingRequests || 0}
+              {stats?.submissions?.pendingRequests || 0}
             </div>
           </div>
         </div>
@@ -137,7 +137,7 @@ const EmployeeDashboard: React.FC = () => {
           <div className="flex-1">
             <div className="text-sm text-gray-500">Approved Requests</div>
             <div className="text-2xl font-semibold text-foreground mt-2">
-              {stats?.approvedRequests || 0}
+              {stats?.submissions?.approvedRequests || 0}
             </div>
           </div>
         </div>
