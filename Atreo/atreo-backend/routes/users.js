@@ -11,7 +11,6 @@ const { validateUserUpdate, validateObjectId, validatePagination, validateSignup
 const { requireModuleAccess } = require('../middleware/permissions');
 const { createAuditLog, logDataChange } = require('../middleware/auditLog');
 const storageService = require('../services/storageService');
-const storageService = require('../services/storageService');
 const multer = require('multer');
 
 // Configure multer for file uploads
