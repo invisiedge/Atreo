@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiEye, FiEyeOff, FiEdit2, FiTrash2, FiInfo, FiUpload, FiDownload, FiCheck } from 'react-icons/fi';
+import { FiPlus, FiEye, FiEyeOff, FiEdit2, FiTrash2, FiInfo, FiDownload, FiCheck } from 'react-icons/fi';
 import { EmployeeService } from '../../services/employeeService';
 import { type Employee } from '../../services/api';
 import { apiClient } from '../../services/api';

@@ -42,7 +42,7 @@ export class UserApi extends BaseApiClient {
     name: string;
     email: string;
     password: string;
-    role?: 'admin' | 'user';
+    role?: 'admin' | 'user' | 'accountant';
     employeeId?: string;
     permissions?: string[];
   }): Promise<User> {
@@ -53,7 +53,7 @@ export class UserApi extends BaseApiClient {
     return response.user;
   }
 
-  async updateUserRole(userId: string, role: 'admin' | 'user'): Promise<User> {
+  async updateUserRole(userId: string, role: 'admin' | 'user' | 'accountant'): Promise<User> {
     const response = await this.request<{ user: User }>(`/users/${userId}/role`, {
       method: 'PATCH',
       body: JSON.stringify({ role }),

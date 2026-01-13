@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiUpload, FiFile, FiCalendar, FiDollarSign, FiTag, FiEye, FiDownload, FiTrash2, FiPlus } from 'react-icons/fi';
+import { FiUpload, FiFile, FiDollarSign, FiEye, FiDownload, FiTrash2, FiPlus } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../hooks/useToast';
 import { logger } from '../../lib/logger';
@@ -19,10 +19,9 @@ interface Invoice {
 }
 
 export default function UserInvoices() {
-  const { user } = useAuth();
+  const { } = useAuth();
   const { showToast } = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);

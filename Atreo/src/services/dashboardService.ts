@@ -1,12 +1,6 @@
 import { logger } from '../lib/logger';
 import { apiClient } from './api';
-import type { DashboardStats } from '../types/dashboard.types';
-
-export interface UserDashboardStats {
-  totalEarnings: number;
-  pendingRequests: number;
-  approvedRequests: number;
-}
+import type { DashboardStats, UserDashboardStats } from '../types/dashboard.types';
 
 export class DashboardService {
   static async getAdminStats(timeFrame?: '1month' | '3months' | '6months' | '1year'): Promise<DashboardStats> {

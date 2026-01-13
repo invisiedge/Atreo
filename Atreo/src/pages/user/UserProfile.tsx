@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { FiUser, FiCreditCard, FiSave, FiEdit3, FiPhone, FiMail, FiBriefcase, FiCalendar, FiDollarSign, FiFileText, FiTarget, FiTool, FiShield, FiUpload, FiDownload, FiTrash2, FiCheck } from 'react-icons/fi';
+import { FiUser, FiCreditCard, FiSave, FiEdit3, FiPhone, FiDollarSign, FiFileText, FiTarget, FiShield, FiDownload, FiTrash2, FiCheck } from 'react-icons/fi';
 import { apiClient } from '../../services/api';
-import type { UserProfile as UserProfileType, UpdateUserProfileRequest } from '../../services/api';
+import type { UserProfile as UserProfileType } from '../../services/api';
 import { logger } from '../../lib/logger';
 import { useAuth } from '../../context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const UserProfile: React.FC = () => {
-  const { setUser, user: currentUser } = useAuth();
+  const { setUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -516,7 +516,7 @@ const UserProfile: React.FC = () => {
                 disabled={!isEditing}
                 placeholder="Emergency contact name"
               />
-            </div>
+          </div>
             <div>
               <Label>Emergency Contact Phone</Label>
               <Input
@@ -527,7 +527,7 @@ const UserProfile: React.FC = () => {
                 disabled={!isEditing}
                 placeholder="+1 (555) 123-4567"
               />
-            </div>
+        </div>
             <div>
               <Label>Emergency Contact Relationship</Label>
               <Input
@@ -554,35 +554,35 @@ const UserProfile: React.FC = () => {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
+              <div>
               <Label>Bank Name</Label>
               <Input
-                type="text"
-                name="bankName"
-                value={formData.bankName}
-                onChange={handleInputChange}
-                disabled={!isEditing}
-              />
-            </div>
-            <div>
+                  type="text"
+                  name="bankName"
+                  value={formData.bankName}
+                  onChange={handleInputChange}
+                  disabled={!isEditing}
+                />
+              </div>
+              <div>
               <Label>Account Number</Label>
               <Input
-                type="text"
-                name="accountNumber"
-                value={formData.accountNumber}
-                onChange={handleInputChange}
-                disabled={!isEditing}
+                  type="text"
+                  name="accountNumber"
+                  value={formData.accountNumber}
+                  onChange={handleInputChange}
+                  disabled={!isEditing}
                 className="font-mono"
-              />
-            </div>
-            <div>
+                />
+              </div>
+              <div>
               <Label>SWIFT Code</Label>
               <Input
-                type="text"
-                name="swiftCode"
-                value={formData.swiftCode}
-                onChange={handleInputChange}
-                disabled={!isEditing}
+                  type="text"
+                  name="swiftCode"
+                  value={formData.swiftCode}
+                  onChange={handleInputChange}
+                  disabled={!isEditing}
                 className="font-mono"
               />
             </div>
@@ -700,8 +700,8 @@ const UserProfile: React.FC = () => {
                 onChange={handleInputChange}
                 disabled={!isEditing}
                 placeholder="0.00"
-              />
-            </div>
+                />
+              </div>
             <div>
               <Label>Deductions</Label>
               <Input
@@ -916,8 +916,8 @@ const UserProfile: React.FC = () => {
                     Uploading...
                   </div>
                 )}
-              </div>
-            </div>
+        </div>
+      </div>
           ))}
         </CardContent>
       </Card>
@@ -960,8 +960,8 @@ const UserProfile: React.FC = () => {
               <h4 className="text-sm font-medium text-yellow-900 dark:text-yellow-100 mb-2">Security Notice</h4>
               <p className="text-sm text-yellow-800 dark:text-yellow-200">
                 Your information is encrypted and stored securely. When you update your profile, admins can see these changes in the Employees page. Only you and authorized administrators can view this information.
-              </p>
-            </div>
+        </p>
+      </div>
           </div>
         </CardContent>
       </Card>

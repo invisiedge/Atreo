@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   FiKey,
   FiEye,
   FiEyeOff,
   FiSearch,
-  FiFilter,
   FiUsers,
-  FiLock,
   FiShield,
   FiCopy,
   FiExternalLink,
@@ -60,7 +58,7 @@ const DEPARTMENTS = [
 ];
 
 export default function AccountantCredentials() {
-  const { user } = useAuth();
+  const { } = useAuth();
   const { showToast } = useToast();
 
   const [credentials, setCredentials] = useState<Credential[]>([]);
@@ -131,7 +129,7 @@ export default function AccountantCredentials() {
     if (credential && credential.password === '••••••••••••') {
       try {
         // Fetch the actual credential details
-        const tool = await apiClient.getTool(credentialId);
+        const tool = await apiClient.getToolById(credentialId);
         const updatedCredentials = credentials.map(cred => 
           cred.id === credentialId 
             ? { ...cred, password: tool.password || '' }

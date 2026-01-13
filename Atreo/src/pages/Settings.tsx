@@ -198,7 +198,7 @@ export default function Settings() {
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">Role</label>
               <p className="text-sm font-semibold text-foreground capitalize">
-                {user?.role === 'accountant' ? 'Accountant' : user?.role === 'admin' ? 'Admin' : 'User' || 'N/A'}
+                {user?.role === 'accountant' ? 'Accountant' : user?.role === 'admin' ? 'Admin' : user?.role === 'user' ? 'User' : 'N/A'}
               </p>
             </div>
             {user?.adminRole && (

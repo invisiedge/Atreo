@@ -21,7 +21,6 @@ import AdminDomains from "./pages/admin/AdminDomains";
 import AdminEmails from "./pages/admin/AdminEmails";
 import AdminMessages from "./pages/admin/AdminMessages";
 import AdminCustomers from "./pages/admin/AdminCustomers";
-import AdminCredentials from "./pages/admin/AdminCredentials";
 import AdminAnalytics from "./pages/admin/AdminAnalytics";
 import AdminAutomation from "./pages/admin/AdminAutomation";
 import AdminSecurity from "./pages/admin/AdminSecurity";
@@ -29,7 +28,6 @@ import AdminLogs from "./pages/admin/AdminLogs";
 import AdminHelp from "./pages/admin/AdminHelp";
 import EmployeeDashboard from "./pages/user/EmployeeDashboard";
 import UserDashboard from "./pages/user/UserDashboard";
-import UserSubmission from "./pages/user/UserSubmission";
 import UserProfileComponent from "./pages/user/UserProfile";
 import UserTools from "./pages/user/UserTools";
 import UserInvoices from "./pages/user/UserInvoices";
@@ -82,7 +80,7 @@ const AppContent: React.FC = () => {
     "profile",
     "settings",
   ]; // Read-only access
-  const getDefaultTab = (role: string | undefined) => "dashboard";
+  const getDefaultTab = (_role: string | undefined) => "dashboard";
 
   // Restore last active tab on load (per role) - only during same session
   useEffect(() => {

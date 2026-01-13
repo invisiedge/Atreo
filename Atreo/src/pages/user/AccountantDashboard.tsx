@@ -4,11 +4,9 @@ import {
   FiFileText,
   FiTrendingUp,
   FiTrendingDown,
-  FiCalendar,
   FiPieChart,
   FiBarChart2,
   FiDownload,
-  FiFilter,
   FiRefreshCw
 } from 'react-icons/fi';
 import {
@@ -122,7 +120,7 @@ const StatCard = ({
 };
 
 export default function AccountantDashboard() {
-  const { user } = useAuth();
+  const { } = useAuth();
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState('30d');
@@ -471,7 +469,9 @@ export default function AccountantDashboard() {
                   tooltip: {
                     callbacks: {
                       label: (context) => {
-                        return `$${context.parsed.y.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                        const value = context.parsed.y;
+                        if (value === null || value === undefined) return '$0.00';
+                        return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                       }
                     }
                   }
@@ -582,8 +582,10 @@ export default function AccountantDashboard() {
                   tooltip: {
                     callbacks: {
                       label: (context) => {
+                        const value = context.parsed.x;
+                        if (value === null || value === undefined) return '$0.00';
                         const item = dashboardData.categoryBreakdown[context.dataIndex];
-                        return `$${context.parsed.x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${item.percentage}%)`;
+                        return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${item.percentage}%)`;
                       }
                     }
                   }
@@ -638,8 +640,10 @@ export default function AccountantDashboard() {
                   tooltip: {
                     callbacks: {
                       label: (context) => {
+                        const value = context.parsed.y;
+                        if (value === null || value === undefined) return '$0.00';
                         const item = dashboardData.topVendors[context.dataIndex];
-                        return `$${context.parsed.y.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${item.count} invoices)`;
+                        return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${item.count} invoices)`;
                       }
                     }
                   }
@@ -671,7 +675,7 @@ export default function AccountantDashboard() {
           ) : (
             <div className="h-full flex items-center justify-center text-muted-foreground">
               No vendor data available
-            </div>
+                    </div>
           )}
         </ChartContainer>
                       </div>
@@ -711,7 +715,9 @@ export default function AccountantDashboard() {
                   tooltip: {
                     callbacks: {
                       label: (context) => {
-                        return `$${context.parsed.y.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                        const value = context.parsed.y;
+                        if (value === null || value === undefined) return '$0.00';
+                        return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                       }
                     }
                   }
@@ -789,7 +795,7 @@ export default function AccountantDashboard() {
                     : 'New invoice pending';
 
                   return (
-                    <div key={invoice.id || invoice._id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
+                    <div key={invoice.id || (invoice as any)._id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
                 <div className="flex items-center space-x-3">
                   <div className={`w-2 h-2 rounded-full ${
                           invoice.status === 'approved' ? 'bg-green-500' :
