@@ -46,7 +46,7 @@ export function hasModuleAccess(
     const moduleMap: { [key: string]: string[] } = {
       general: ['dashboard', 'payments'],
       management: ['organizations', 'employees', 'users', 'admins'],
-      tools: ['products', 'invoices', 'assets'], // Credentials removed - not in sidebar per requirements
+      tools: ['products', 'emails', 'invoices', 'assets'],
       intelligence: ['ai-features', 'automation'],
       system: ['settings', 'logs', 'help']
     };

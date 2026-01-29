@@ -18,12 +18,13 @@ const toolRoutes = require('./tools');
 const invoiceRoutes = require('./invoices');
 const organizationRoutes = require('./organizations');
 const assetRoutes = require('./assets');
+const customerRoutes = require('./customers');
+const emailRoutes = require('./emails');
 const aiRoutes = require('./ai');
 const permissionRoutes = require('./permissions');
 const credentialRoutes = require('./credentials');
 const logRoutes = require('./logs');
 const messageRoutes = require('./messages');
-const customerRoutes = require('./customers');
 const paymentRoutes = require('./payments');
 
 module.exports = {
@@ -44,5 +45,6 @@ module.exports = {
   logs: logRoutes,
   messages: messageRoutes,
   customers: customerRoutes,
-  payments: paymentRoutes
+  payments: paymentRoutes,
+  emails: emailRoutes
 };

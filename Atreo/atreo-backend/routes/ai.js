@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const OpenAI = require('openai');
 const { authenticateToken } = require('../middleware/auth');
 const Tool = require('../models/Tool');
@@ -12,6 +13,8 @@ const Asset = require('../models/Asset');
 const Domain = require('../models/Domain');
 const Payment = require('../models/Payment');
 const Organization = require('../models/Organization');
+const Email = require('../models/Email');
+const Customer = mongoose.models.Customer || null;
 
 // Initialize OpenAI client
 let openaiClient = null;
@@ -84,6 +87,8 @@ router.post('/ask', authenticateToken, async (req, res) => {
       domains,
       payments,
       organizations,
+      emails,
+      customers,
       toolAnalysis,
       invoiceTrends,
       topSpendingTools
@@ -94,8 +99,8 @@ router.post('/ask', authenticateToken, async (req, res) => {
         : Promise.resolve([]),
       // Fetch ALL tools for comprehensive analysis (limit to active tools for performance)
       Tool.find({ status: 'active' }).select('name category isPaid price billingPeriod status organizationId createdAt updatedAt').lean(),
-      User.find().select('name email role isActive createdAt').limit(50).lean(),
-      Employee.find().select('name email position department status salary').limit(50).lean(),
+      User.find().select('name email role isActive createdAt').limit(200).lean(),
+      Employee.find().select('name email position department status salary').limit(200).lean(),
       Submission.find().select('employeeName totalAmount status submittedAt approvedAt').sort({ submittedAt: -1 }).limit(20).lean(),
       // Fetch recent invoices for comprehensive analysis (limit to last 50 for performance)
       Invoice.find({
@@ -104,7 +109,7 @@ router.post('/ask', authenticateToken, async (req, res) => {
           { 'notes.type': { $exists: false } },
           { notes: null }
         ]
-      }).select('invoiceNumber amount currency provider billingDate dueDate status category organizationId createdAt').sort({ createdAt: -1 }).limit(50).lean(),
+      }).select('invoiceNumber amount currency provider billingDate dueDate status category organizationId createdAt').sort({ createdAt: -1 }).limit(200).lean(),
       // Invoice analysis aggregations
       Promise.all([
         Invoice.aggregate([
@@ -190,10 +195,12 @@ router.post('/ask', authenticateToken, async (req, res) => {
           { $limit: 6 }
         ])
       ]),
-      Asset.find().select('name type status serialNumber purchaseDate purchasePrice').limit(30).lean(),
-      Domain.find().select('domainName provider expiryDate status registrationDate').limit(30).lean(),
-      Payment.find().select('amount currency status paymentDate provider').sort({ paymentDate: -1 }).limit(30).lean(),
-      Organization.find().select('name website contactEmail createdAt').limit(30).lean(),
+      Asset.find().select('name type status serialNumber purchaseDate purchasePrice').limit(100).lean(),
+      Domain.find().select('domainName provider expiryDate status registrationDate').limit(100).lean(),
+      Payment.find().select('amount currency status paymentDate provider').sort({ paymentDate: -1 }).limit(100).lean(),
+      Organization.find().select('name domain createdAt').limit(100).lean(),
+      Email.find().select('email domain provider status organizationId').limit(200).lean(),
+      Customer ? Customer.find().select('name email company status customerType totalRevenue').limit(200).lean() : Promise.resolve([]),
       // Tool analysis aggregations
       Promise.all([
         Tool.aggregate([
@@ -348,6 +355,8 @@ router.post('/ask', authenticateToken, async (req, res) => {
 - Pending Invoices: ${pendingInvoices.length} ($${safeToFixed(pendingAmount)})
 - Total Assets: ${assets.length} | Total Domains: ${domains.length}
 - Total Organizations: ${organizations.length}
+- Total Emails (email list): ${emails.length}
+- Total Customers: ${customers.length}
 - Monthly Tools Spend (Recurring): $${safeToFixed(totalMonthlyToolsSpend)}
 - Total Submissions: ${submissions.length} (Pending: ${submissions.filter(s => s.status === 'pending').length}, Approved: ${submissions.filter(s => s.status === 'approved').length})
 
@@ -437,79 +446,50 @@ ${domains.slice(0, 20).map((dom, idx) => `${idx + 1}. ${dom.domainName} (${dom.p
 💳 PAYMENTS (Recent 30):
 ${payments.map((p, idx) => `${idx + 1}. ${p.currency || 'USD'} ${safeToFixed(p.amount)} to ${p.provider || 'N/A'} - ${p.status || 'N/A'}`).join('\n')}
 
-🏢 ORGANIZATIONS (${organizations.length} total, showing ${Math.min(organizations.length, 20)}):
-${organizations.slice(0, 20).map((org, idx) => `${idx + 1}. ${org.name}`).join('\n')}
+🏢 ORGANIZATIONS (${organizations.length} total, showing ${Math.min(organizations.length, 50)}):
+${organizations.slice(0, 50).map((org, idx) => `${idx + 1}. ${org.name}${org.domain ? ` (${org.domain})` : ''}`).join('\n')}
 
+📧 EMAILS / EMAIL LIST (${emails.length} total, showing ${Math.min(emails.length, 100)}):
+${emails.length > 0 ? emails.slice(0, 100).map((e, idx) => `${idx + 1}. ${e.email} - domain: ${e.domain || 'N/A'}, provider: ${e.provider || 'N/A'}, status: ${e.status || 'N/A'}`).join('\n') : 'No emails in database.'}
+
+👤 CUSTOMERS (${customers.length} total, showing ${Math.min(customers.length, 100)}):
+${customers.length > 0 ? customers.slice(0, 100).map((c, idx) => `${idx + 1}. ${c.name} (${c.email})${c.company ? ` - ${c.company}` : ''} - status: ${c.status || 'N/A'}${c.totalRevenue != null ? `, revenue: $${safeToFixed(c.totalRevenue)}` : ''}`).join('\n') : 'No customers in database.'}
 
 === END OF COMPREHENSIVE DATA ===\n\n`;
 
 
-    const systemPrompt = `You are a professional AI assistant for Atreo, a comprehensive tool and invoice management platform. You have access to complete database information.
+    const systemPrompt = `You are a professional AI assistant for Atreo with FULL KNOWLEDGE of the entire database. You have access to ALL data: tools/credentials, users, employees, invoices, payments, organizations, assets, domains, submissions, emails (email list), and customers. Answer ANY question about this data accurately. If the answer is not in the context, say so; otherwise use the provided data to answer completely.
 
-PROFESSIONAL RESPONSE FORMATTING STANDARDS:
+RESPONSE FORMAT (choose based on the question):
 
-1. SIMPLE QUERIES (details, show me, list, give me, username, password, credentials):
-   - Use professional markdown tables with proper alignment
-   - Include clear column headers
-   - Present data in a clean, scannable format
-   - For credentials: Display username and password clearly in separate columns
-   - Use consistent formatting throughout
-   - Example format:
-     | Tool Name | Category | Username | Password | Status | Price |
-     |-----------|----------|----------|----------|--------|-------|
-     | Instagram | Social Media | user@example.com | ******** | Active | $0/month |
+1. SHORT ANSWERS (counts, single value, yes/no, one sentence):
+   - Answer in plain text. No tables. Example: "You have 24 active tools and 12 paid subscriptions."
 
-2. ANALYSIS QUERIES (analyze, insights, trends, compare, recommendations):
-   - Start with an executive summary (2-3 sentences)
-   - Use clear section headers (## Header)
-   - Present data in professional tables
-   - Include key metrics and percentages
-   - Provide actionable recommendations in a numbered list
-   - Use professional business language
-   - Format: Executive Summary → Key Findings → Detailed Analysis → Recommendations
+2. LISTS OF ITEMS (e.g. "list all tools", "show me invoices", "which users"):
+   - Use a markdown table ONLY when listing multiple rows with the same columns (e.g. 5+ tools, 5+ invoices).
+   - Format: header row, then separator line (|---|---|), then data rows.
+   - For 1–4 items, use bullet points instead of a table.
 
-3. GENERAL QUERIES:
-   - Use professional tone and structure
-   - Format data in tables when appropriate
-   - Use bullet points for lists (• or -)
-   - Include relevant context without verbosity
-   - Maintain consistency in formatting
+3. ANALYSIS / INSIGHTS (analyze, trends, recommendations):
+   - Start with a short summary in paragraphs.
+   - Use section headers (## and ###).
+   - Use bullet points and numbered lists for findings and recommendations.
+   - Use a table only when comparing many rows (e.g. top 10 tools by spend). Otherwise use bullets.
 
-PROFESSIONAL FORMATTING RULES:
-- Always use markdown tables for structured data
-- Use proper markdown headers (## for main sections, ### for subsections)
-- Format numbers consistently (use commas for thousands, $ for currency)
-- Use professional terminology
-- Ensure tables are properly aligned and readable
-- For credentials: Show username and password in clear, separate columns
-- Use consistent date formatting (MM/DD/YYYY or YYYY-MM-DD)
-- Include relevant context but avoid unnecessary verbosity
-- Use professional business language throughout
+4. GENERAL:
+   - Prefer paragraphs, bullet points (- or *), and headers. Use tables only when the answer is clearly "rows of data" (many items with same columns).
+   - Format numbers with commas and $ for currency. Use professional tone.
 
-OUTPUT QUALITY STANDARDS:
-- Be accurate and data-driven
-- Use professional terminology
-- Maintain consistency in formatting
-- Ensure readability and clarity
-- Present information in a logical structure
-- Use proper markdown formatting for tables, headers, and lists
-
-Be PROFESSIONAL, ACCURATE, and WELL-FORMATTED in all responses.`;
+Do NOT use a table for: single numbers, short lists (under 5 items), summaries, explanations, or when the user asked a simple "how many" or "what is" question. Use tables only for multi-row structured data (e.g. "list all paid tools" with 10+ rows).`;
 
     // Build user message based on question type
     let userMessage;
     if (isSimpleQuery) {
-      userMessage = `DATABASE CONTEXT:\n${context}\n\nQUESTION: ${question}\n\nProvide a professional, concise response. Format data in clean markdown tables with proper headers. For tool/organization details, include username and password in separate table columns. Use professional formatting throughout.`;
+      userMessage = `DATABASE CONTEXT:\n${context}\n\nQUESTION: ${question}\n\nAnswer concisely. Use a markdown table only if listing many items (e.g. 5+ tools or invoices with same columns). For few items use bullet points. For counts or single values use plain text.`;
     } else if (isAnalysisQuery) {
-      userMessage = `DATABASE CONTEXT:\n${context}\n\nQUESTION: ${question}\n\nProvide a professional analysis with:
-1. Executive Summary (2-3 sentences)
-2. Key Findings (formatted tables)
-3. Detailed Analysis (structured with headers)
-4. Recommendations (numbered list)
-
-Use professional markdown formatting, tables for data, and business terminology.`;
+      userMessage = `DATABASE CONTEXT:\n${context}\n\nQUESTION: ${question}\n\nProvide analysis with: 1) Short summary in paragraphs. 2) Key findings with bullet points or numbered lists. 3) Section headers (##). Use a table only when showing many comparable rows; otherwise use bullets and prose.`;
     } else {
-      userMessage = `DATABASE CONTEXT:\n${context}\n\nQUESTION: ${question}\n\nProvide a professional, well-formatted answer. Use markdown tables for structured data, proper headers for sections, and maintain professional tone throughout.`;
+      userMessage = `DATABASE CONTEXT:\n${context}\n\nQUESTION: ${question}\n\nAnswer clearly. Use paragraphs and bullet points by default. Use a markdown table only when the answer is a list of many rows with the same columns (e.g. 5+ items).`;
     }
 
     const response = await openaiClient.chat.completions.create({

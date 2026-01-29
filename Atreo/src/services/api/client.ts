@@ -50,20 +50,23 @@ export class BaseApiClient {
       });
     }
 
+    const opts = options as RequestInit & { timeout?: number };
+    const timeoutMs = opts.timeout ?? API_TIMEOUT;
+    const { timeout: _skip, ...restOptions } = opts;
     const config: RequestInit = {
-      ...options,
+      ...restOptions,
       headers,
     };
 
     try {
-      // Add timeout for fetch requests
+      // Add timeout for fetch requests (allow per-request override for long operations e.g. Excel import)
       let controller: AbortController | undefined;
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       const fetchConfig = { ...config };
 
       if (!fetchConfig.signal) {
         controller = new AbortController();
-        timeoutId = setTimeout(() => controller!.abort(), API_TIMEOUT);
+        timeoutId = setTimeout(() => controller!.abort(), timeoutMs);
         fetchConfig.signal = controller.signal;
       }
 

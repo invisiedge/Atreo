@@ -7,6 +7,7 @@ const Tool = require('../models/Tool');
 const { authenticateToken } = require('../middleware/auth');
 const storageService = require('../services/storageService');
 const invoiceParser = require('../services/invoiceParser');
+const { generateSubscriptionDescription } = require('../services/subscriptionDescription');
 const { logDataChange } = require('../middleware/auditLog');
 const multer = require('multer');
 const XLSX = require('xlsx');
@@ -82,7 +83,7 @@ router.get('/', authenticateToken, async (req, res) => {
       .populate('uploadedBy', 'name email')
       .populate('approvedBy', 'name email')
       .populate('organizationId', 'name domain')
-      .populate('toolIds', 'name category')
+      .populate('toolIds', 'name category description')
       .sort({ billingDate: -1 });
 
     res.json(invoices.map(inv => ({
@@ -238,12 +239,21 @@ router.post('/import-excel', authenticateToken, uploadExcel.single('file'), asyn
 
       if (!vendor || amount === 0) continue;
 
+      // Generate subscription description
+      let subscriptionDescription = '';
+      try {
+        subscriptionDescription = await generateSubscriptionDescription(vendor, []);
+      } catch (error) {
+        console.error('Error generating description for imported invoice:', error);
+      }
+
       await Invoice.create({
         invoiceNumber,
         amount,
         currency: row['Currency'] || 'USD',
         provider: vendor,
         billingDate: row['Billing Date'] ? new Date(row['Billing Date']) : new Date(),
+        subscriptionDescription,
         status: req.user.role === 'admin' ? 'approved' : 'pending',
         organizationId: user?.organizationId,
         uploadedBy: req.user.userId
@@ -271,8 +281,22 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Invoice has no associated file' });
     }
 
+    // Get expiration time from query parameter (in minutes)
+    // Default: 15 minutes, Max: 7 days (10,080 minutes) for GCS v4 signed URLs
+    let expiresMinutes = parseInt(req.query.expires) || 15;
+    
+    // Cap at 7 days (10,080 minutes) - maximum for GCS v4 signed URLs
+    if (expiresMinutes > 10080) {
+      expiresMinutes = 10080;
+    }
+    
+    // Minimum 1 minute
+    if (expiresMinutes < 1) {
+      expiresMinutes = 1;
+    }
+
     // Generate a signed URL for secure access
-    const signedUrl = await storageService.getSignedUrl(invoice.fileUrl);
+    const signedUrl = await storageService.getSignedUrl(invoice.fileUrl, expiresMinutes);
 
     res.json({ url: signedUrl });
   } catch (error) {
@@ -288,7 +312,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
       .populate('uploadedBy', 'name email')
       .populate('approvedBy', 'name email')
       .populate('organizationId', 'name domain')
-      .populate('toolIds', 'name category');
+      .populate('toolIds', 'name category description');
 
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
     res.json(invoice);
@@ -302,7 +326,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, uploadForParsing.single('file'), async (req, res) => {
   try {
     // Users can create invoices for their own tools/credentials, admins can create for anyone
-    const { invoiceNumber, amount, provider, billingDate, dueDate, category, organizationId, toolIds, currency } = req.body;
+    const { invoiceNumber, amount, provider, billingDate, dueDate, category, organizationId, toolIds, currency, subscriptionDescription } = req.body;
     
     let fileUrl = null;
     let fileName = null;
@@ -315,6 +339,31 @@ router.post('/', authenticateToken, uploadForParsing.single('file'), async (req,
       fileSize = req.file.size;
     }
 
+    // Handle subscription description
+    // If provided manually, use it; otherwise auto-generate
+    let finalSubscriptionDescription = subscriptionDescription?.trim() || '';
+    
+    // Only auto-generate if not provided and not an employee payment
+    if (!finalSubscriptionDescription) {
+      const isEmployeePayment = invoiceNumber?.startsWith('PAY-') || req.body.notes?.type === 'employee_contractor';
+      if (!isEmployeePayment) {
+        // Get linked tools for description generation
+        let linkedTools = [];
+        if (toolIds && toolIds.length > 0) {
+          const toolArray = Array.isArray(toolIds) ? toolIds : [toolIds];
+          linkedTools = await Tool.find({ _id: { $in: toolArray } }).select('name description').lean();
+        }
+
+        // Generate subscription description based on provider and tools
+        try {
+          finalSubscriptionDescription = await generateSubscriptionDescription(provider, linkedTools);
+        } catch (error) {
+          console.error('Error generating subscription description:', error);
+          // Continue without description if generation fails
+        }
+      }
+    }
+
     const invoice = await Invoice.create({
       invoiceNumber,
       amount: parseFloat(amount),
@@ -323,6 +372,7 @@ router.post('/', authenticateToken, uploadForParsing.single('file'), async (req,
       billingDate: new Date(billingDate),
       dueDate: dueDate ? new Date(dueDate) : null,
       category,
+      subscriptionDescription: finalSubscriptionDescription,
       status: req.user.role === 'admin' ? 'approved' : 'pending',
       fileUrl,
       fileName,
@@ -389,6 +439,34 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (organizationId !== undefined) updateData.organizationId = organizationId;
     if (toolIds !== undefined) {
       updateData.toolIds = Array.isArray(toolIds) ? toolIds : (toolIds ? [toolIds] : []);
+    }
+
+    // Regenerate subscription description if provider or tools changed
+    // Skip for employee payment invoices
+    const isEmployeePayment = invoice.invoiceNumber?.startsWith('PAY-') || invoice.notes?.type === 'employee_contractor';
+    if (!isEmployeePayment) {
+      const providerChanged = provider !== undefined && provider !== invoice.provider;
+      const toolsChanged = toolIds !== undefined;
+      if (providerChanged || toolsChanged) {
+        const finalProvider = provider !== undefined ? provider : invoice.provider;
+        const finalToolIds = toolIds !== undefined 
+          ? (Array.isArray(toolIds) ? toolIds : (toolIds ? [toolIds] : []))
+          : invoice.toolIds || [];
+        
+        // Get linked tools for description generation
+        let linkedTools = [];
+        if (finalToolIds.length > 0) {
+          linkedTools = await Tool.find({ _id: { $in: finalToolIds } }).select('name description').lean();
+        }
+
+        // Generate subscription description
+        try {
+          updateData.subscriptionDescription = await generateSubscriptionDescription(finalProvider, linkedTools);
+        } catch (error) {
+          console.error('Error generating subscription description:', error);
+          // Keep existing description if generation fails
+        }
+      }
     }
     
     // Only admins can update status

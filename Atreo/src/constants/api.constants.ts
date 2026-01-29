@@ -5,6 +5,7 @@
 
 export const API_TIMEOUT = 30000; // 30 seconds
 export const AI_API_TIMEOUT = 120000; // 2 minutes for AI requests (they take longer)
+export const IMPORT_EXCEL_TIMEOUT = 180000; // 3 minutes for Excel import (many DB ops per row)
 
 // Ensure API_BASE_URL is a valid absolute URL with protocol and /api suffix
 const rawBaseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';

@@ -8,6 +8,7 @@ export interface Tool {
   name: string;
   description?: string;
   category?: string;
+  organizationId?: string;
   username?: string;
   password?: string;
   apiKey?: string;

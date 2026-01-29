@@ -13,6 +13,11 @@
     "seed": "node -e \"require('./scripts/seedDatabase')()\"",
     "seed-tools": "node scripts/seedTools.js",
     "update-admin-password": "node scripts/updateAdminPassword.js",
+    "create-admin": "node scripts/create-admin-user.js",
+    "generate-descriptions": "node scripts/generate-invoice-descriptions.js",
+    "cleanup-employee-descriptions": "node scripts/cleanup-employee-descriptions.js",
+    "test-db": "node scripts/test-mongodb-connection.js",
+    "import-emails": "node scripts/import-emails-from-excel.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"

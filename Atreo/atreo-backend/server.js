@@ -25,10 +25,34 @@ const PORT = process.env.PORT || 3001;
 // Trust proxy - important for Railway/Vercel deployments behind proxies
 app.set('trust proxy', 1);
 
-// Connect to MongoDB (non-blocking)
-connectDB().catch(err => {
-  console.error('Failed to connect to database:', err.message);
-});
+// Connect to MongoDB with retry logic
+let dbConnectionAttempts = 0;
+const maxConnectionAttempts = 5;
+
+const connectWithRetry = async () => {
+  try {
+    await connectDB();
+    dbConnectionAttempts = 0; // Reset on success
+  } catch (err) {
+    dbConnectionAttempts++;
+    console.error(`❌ Database connection attempt ${dbConnectionAttempts}/${maxConnectionAttempts} failed:`, err.message);
+    
+    if (dbConnectionAttempts < maxConnectionAttempts) {
+      const retryDelay = Math.min(5000 * dbConnectionAttempts, 30000); // Exponential backoff, max 30s
+      console.log(`🔄 Retrying database connection in ${retryDelay / 1000} seconds...`);
+      setTimeout(connectWithRetry, retryDelay);
+    } else {
+      console.error('❌ Max database connection attempts reached. Server will continue but database operations will fail.');
+      console.error('💡 Please check:');
+      console.error('   1. Railway MongoDB service is running');
+      console.error('   2. Connection string in .env is correct');
+      console.error('   3. Network connectivity to Railway');
+    }
+  }
+};
+
+// Start connection attempt
+connectWithRetry();
 
 // Middleware - Configure helmet to not interfere with CORS
 app.use(helmet({
@@ -80,7 +104,23 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  const mongoose = require('mongoose');
+  const dbStatus = {
+    0: 'disconnected',
+    1: 'connected',
+    2: 'connecting',
+    3: 'disconnecting'
+  };
+  
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    database: {
+      status: dbStatus[mongoose.connection.readyState] || 'unknown',
+      readyState: mongoose.connection.readyState,
+      connected: mongoose.connection.readyState === 1
+    }
+  });
 });
 
 
@@ -103,6 +143,7 @@ app.use('/api/logs', authenticateToken, routes.logs);
 app.use('/api/messages', authenticateToken, routes.messages);
 app.use('/api/customers', authenticateToken, routes.customers);
 app.use('/api/payments', routes.payments);
+app.use('/api/emails', authenticateToken, routes.emails);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

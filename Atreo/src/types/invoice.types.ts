@@ -12,6 +12,7 @@ export interface Invoice {
   billingDate: string;
   dueDate?: string | null;
   category?: string | null;
+  subscriptionDescription?: string | null;
   status: 'pending' | 'approved' | 'rejected';
   fileUrl?: string | null;
   fileName?: string | null;
@@ -53,6 +54,7 @@ export interface CreateInvoiceRequest {
   category?: string;
   organizationId?: string;
   toolIds?: string[];
+  subscriptionDescription?: string;
   file?: File;
 }
 

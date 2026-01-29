@@ -31,7 +31,6 @@ import UserDashboard from "./pages/user/UserDashboard";
 import UserProfileComponent from "./pages/user/UserProfile";
 import UserTools from "./pages/user/UserTools";
 import UserInvoices from "./pages/user/UserInvoices";
-import AccountantDashboard from "./pages/user/AccountantDashboard";
 import Settings from "./pages/Settings";
 import MobileBlock from "./components/MobileBlock";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -221,10 +220,10 @@ const AppContent: React.FC = () => {
           return <AdminDashboard key="dashboard-default" />;
       }
     } else if (user.role === "accountant") {
-      // Accountant has read-only access with comprehensive dashboard and credentials
+      // Accountant has read-only access; same dashboard as admin (accountant-focused charts, backend allows both roles)
       switch (activeTab) {
         case "dashboard":
-          return <AccountantDashboard key="dashboard" />;
+          return <AdminDashboard key="dashboard" />;
         case "invoices":
           return <AdminInvoices key="invoices" />;
         case "credentials":
@@ -236,7 +235,7 @@ const AppContent: React.FC = () => {
         case "settings":
           return <Settings key="settings" />;
         default:
-          return <AccountantDashboard key="dashboard-default" />;
+          return <AdminDashboard key="dashboard-default" />;
       }
     } else if (user.role === "user") {
       // Regular users have full access to user features

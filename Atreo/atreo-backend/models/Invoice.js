@@ -34,6 +34,10 @@ const invoiceSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  subscriptionDescription: {
+    type: String,
+    trim: true
+  },
   status: {
     type: String,
     enum: ['pending', 'approved', 'rejected'],

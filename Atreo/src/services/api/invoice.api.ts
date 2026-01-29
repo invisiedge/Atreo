@@ -72,6 +72,7 @@ export class InvoiceApi extends BaseApiClient {
         formData.append('toolIds', toolId);
       });
     }
+    if (data.subscriptionDescription) formData.append('subscriptionDescription', data.subscriptionDescription);
     if (data.file) formData.append('file', data.file);
 
     return this.request<Invoice>(API_ENDPOINTS.INVOICES.BASE, {
@@ -107,8 +108,15 @@ export class InvoiceApi extends BaseApiClient {
     });
   }
 
-  async getInvoiceDownloadUrl(id: string): Promise<{ url: string }> {
-    return this.request<{ url: string }>(API_ENDPOINTS.INVOICES.DOWNLOAD(id));
+  async getInvoiceDownloadUrl(id: string, expiresMinutes?: number): Promise<{ url: string }> {
+    let url = API_ENDPOINTS.INVOICES.DOWNLOAD(id);
+    
+    // Add expiration parameter if provided (in minutes)
+    if (expiresMinutes) {
+      url += `?expires=${expiresMinutes}`;
+    }
+    
+    return this.request<{ url: string }>(url);
   }
 
   async getInvoicesSummary(): Promise<InvoiceSummary> {

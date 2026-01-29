@@ -26,7 +26,13 @@ type EmailPayload = Omit<EmailRecord, 'id' | 'organization' | 'createdAt' | 'upd
 
 export class EmailApi extends BaseApiClient {
   async getEmails(): Promise<EmailRecord[]> {
-    return this.request<EmailRecord[]>('/emails');
+    const response = await this.request<{ emails: EmailRecord[]; pagination?: unknown }>('/emails');
+    const list = response?.emails ?? response;
+    const arr = Array.isArray(list) ? list : [];
+    return arr.map((e: EmailRecord & { _id?: string }) => ({
+      ...e,
+      id: e.id ?? e._id ?? '',
+    }));
   }
 
   async createEmail(data: EmailPayload): Promise<EmailRecord> {

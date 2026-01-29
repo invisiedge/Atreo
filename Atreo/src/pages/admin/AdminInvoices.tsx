@@ -31,13 +31,20 @@ export default function AdminInvoices() {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
     status: '',
     provider: '',
     startDate: '',
-    endDate: ''
+    endDate: '',
+    filterMonth: '' // e.g. '2026-01' for Jan 2026, '' = All
   });
+  // Applied filters (sent to API) – only updated when user clicks "Apply filters"
+  const [appliedFilters, setAppliedFilters] = useState<{
+    status?: string;
+    provider?: string;
+    startDate?: string;
+    endDate?: string;
+  }>({});
   const [sortBy, setSortBy] = useState<'billingDate' | 'amount' | 'provider' | 'status' | 'invoiceNumber' | 'organizationName'>('billingDate');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -64,7 +71,8 @@ export default function AdminInvoices() {
     dueDate: '',
     category: '',
     organizationId: '',
-    toolIds: [] as string[]
+    toolIds: [] as string[],
+    subscriptionDescription: ''
   });
   const [createFile, setCreateFile] = useState<File | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -78,6 +86,7 @@ export default function AdminInvoices() {
   const [summary, setSummary] = useState<InvoiceSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
     const [importingExcel, setImportingExcel] = useState(false);
+    const [exportingCSV, setExportingCSV] = useState(false);
     const [clearingAll, setClearingAll] = useState(false);
     const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
     const [importResult, setImportResult] = useState<{
@@ -106,24 +115,23 @@ export default function AdminInvoices() {
       if (showLoading) setLoading(true);
       setIsRefreshing(true);
 
-      logger.debug('Loading invoices with filters:', filters);
+      logger.debug('Loading invoices with filters:', appliedFilters);
 
-        const data = await apiClient.getInvoices({
-          status: filters.status || undefined,
-          provider: filters.provider || undefined,
-          startDate: filters.startDate || undefined,
-          endDate: filters.endDate || undefined
-        });
+      const data = await apiClient.getInvoices({
+        status: appliedFilters.status || undefined,
+        provider: appliedFilters.provider || undefined,
+        startDate: appliedFilters.startDate || undefined,
+        endDate: appliedFilters.endDate || undefined
+      });
 
-        // Ensure each invoice has an id property (mapped from _id if necessary)
-        const mappedData = (data || []).map((inv: any) => ({
-          ...inv,
-          id: inv.id || inv._id
-        }));
+      const mappedData = (data || []).map((inv: any) => ({
+        ...inv,
+        id: inv.id || inv._id
+      }));
 
-        logger.debug(`Loaded ${mappedData.length} invoices`);
+      logger.debug(`Loaded ${mappedData.length} invoices`);
 
-        setInvoices(mappedData);
+      setInvoices(mappedData);
       setLastUpdated(new Date());
 
       if (data && data.length > 0) {
@@ -151,7 +159,7 @@ export default function AdminInvoices() {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [filters, showToast, loadSummary]);
+  }, [appliedFilters, showToast, loadSummary]);
 
   useEffect(() => {
     loadInvoices();
@@ -295,6 +303,7 @@ export default function AdminInvoices() {
         category: createFormData.category || undefined,
         organizationId: createFormData.organizationId || undefined,
         toolIds: createFormData.toolIds.length > 0 ? createFormData.toolIds : undefined,
+        subscriptionDescription: createFormData.subscriptionDescription.trim() || undefined,
         file: createFile || undefined
       });
 
@@ -308,7 +317,8 @@ export default function AdminInvoices() {
         dueDate: '',
         category: '',
         organizationId: '',
-        toolIds: []
+        toolIds: [],
+        subscriptionDescription: ''
       });
       setCreateFile(null);
       setAutoFilled(false);
@@ -677,6 +687,87 @@ export default function AdminInvoices() {
     });
   };
 
+  const handleExportToCSV = async () => {
+    try {
+      // Get the filtered and sorted invoices
+      const dataToExport = filteredAndSortedInvoices;
+
+      if (dataToExport.length === 0) {
+        showToast('No invoices to export', 'warning');
+        return;
+      }
+
+      setExportingCSV(true);
+      showToast('Exporting...', 'info');
+
+      // CSV Headers (no File Link / csv column)
+      const headers = ['Invoice Number', 'Billing Date', 'Provider/Vendor', 'Amount', 'Subscription Description', 'Tools'];
+
+      // Convert invoices to CSV rows
+      const escapeCSV = (value: string) => {
+        if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+          return `"${value.replace(/"/g, '""')}"`;
+        }
+        return value;
+      };
+
+      const csvRows = dataToExport.map(invoice => {
+        const invoiceNumber = invoice.invoiceNumber || '';
+        const billingDate = invoice.billingDate ? formatDate(invoice.billingDate) : '';
+        const provider = invoice.provider || '';
+        const amount = invoice.amount ? formatCurrency(invoice.amount) : '';
+        const subscriptionDescription = invoice.subscriptionDescription || '';
+        
+        // Format tools with names and descriptions
+        let toolsText = '';
+        if (invoice.tools && Array.isArray(invoice.tools) && invoice.tools.length > 0) {
+          toolsText = invoice.tools.map((tool: any) => {
+            const toolName = typeof tool === 'string' ? tool : (tool.name || tool.id || 'Unknown');
+            const toolDesc = typeof tool === 'object' && tool.description 
+              ? tool.description 
+              : '';
+            return toolDesc ? `${toolName}: ${toolDesc}` : toolName;
+          }).join('; ');
+        }
+        
+        return [
+          escapeCSV(invoiceNumber),
+          escapeCSV(billingDate),
+          escapeCSV(provider),
+          escapeCSV(amount),
+          escapeCSV(subscriptionDescription),
+          escapeCSV(toolsText)
+        ].join(',');
+      });
+
+      // Combine headers and rows
+      const csvContent = [
+        headers.join(','),
+        ...csvRows
+      ].join('\n');
+
+      // Create blob and download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      
+      link.setAttribute('href', url);
+      link.setAttribute('download', `invoices_export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      showToast(`Exported ${dataToExport.length} invoice(s) to CSV`, 'success');
+    } catch (error: any) {
+      logger.error('Failed to export invoices to CSV', error);
+      showToast('Failed to export invoices to CSV', 'error');
+    } finally {
+      setExportingCSV(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -695,6 +786,7 @@ export default function AdminInvoices() {
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-foreground">Invoices</h1>
           <button
+            type="button"
             onClick={() => loadInvoices(false)}
             disabled={isRefreshing}
             className={`p-1.5 rounded-md text-muted-foreground hover:text-gray-700 hover:bg-muted transition-colors ${isRefreshing ? 'animate-spin' : ''}`}
@@ -737,27 +829,17 @@ export default function AdminInvoices() {
               <option value="organizationName">Name</option>
             </select>
             <button
+              type="button"
               onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
               className="px-2 py-2 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border-l border-gray-300"
             >
               {sortOrder === 'asc' ? <FiArrowUp className="h-4 w-4" /> : <FiArrowDown className="h-4 w-4" />}
             </button>
           </div>
-            {/* Filters */}
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`inline-flex items-center px-3 sm:px-4 py-2 border text-sm font-medium rounded-md transition-colors ${
-                showFilters
-                  ? 'border-blue-500 text-primary bg-blue-50'
-                  : 'border-gray-300 text-foreground bg-card hover:bg-accent'
-              }`}
-            >
-              <FiFilter className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Filters</span>
-            </button>
             {/* Clear All Button */}
             {isAdmin && (
               <button
+                type="button"
                 onClick={() => setShowClearAllConfirm(true)}
                 disabled={clearingAll || invoices.length === 0}
                 className="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md shadow-sm text-red-600 bg-card hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors disabled:opacity-50"
@@ -766,6 +848,21 @@ export default function AdminInvoices() {
                 <span className="hidden sm:inline">Clear All</span>
               </button>
             )}
+            {/* Export CSV Button */}
+            <button
+              type="button"
+              onClick={handleExportToCSV}
+              disabled={filteredAndSortedInvoices.length === 0 || exportingCSV}
+              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-foreground bg-card hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {exportingCSV ? (
+                <FiRefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <FiDownload className="h-4 w-4 mr-2" />
+              )}
+              <span className="hidden sm:inline">{exportingCSV ? 'Generating...' : 'Export CSV'}</span>
+              <span className="sm:hidden">{exportingCSV ? '...' : 'Export'}</span>
+            </button>
             {/* Import Excel Button */}
             <label className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-foreground bg-card hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors cursor-pointer">
             <FiUpload className="h-4 w-4 mr-2" />
@@ -781,6 +878,7 @@ export default function AdminInvoices() {
           </label>
           {/* Create Button */}
           <button
+            type="button"
             onClick={() => setShowCreateModal(true)}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
           >
@@ -846,6 +944,7 @@ export default function AdminInvoices() {
               )}
             </div>
             <button
+              type="button"
               onClick={() => setImportResult(null)}
               className="ml-4 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
             >
@@ -870,54 +969,112 @@ export default function AdminInvoices() {
       {/* Invoice Summary Cards */}
       <InvoiceSummaryCards summary={summary} loading={summaryLoading} />
 
-      {/* Filters Panel */}
-      {showFilters && (
-        <div className="bg-card shadow-sm border border-border rounded-lg p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Status</label>
-              <select
-                value={filters.status}
-                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                className="block w-full rounded-md border-border shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              >
-                <option value="">All</option>
-                <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Provider</label>
-              <input
-                type="text"
-                value={filters.provider}
-                onChange={(e) => setFilters({ ...filters, provider: e.target.value })}
-                placeholder="Filter by provider"
-                className="block w-full rounded-md border-border shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Start Date</label>
-              <input
-                type="date"
-                value={filters.startDate}
-                onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                className="block w-full rounded-md border-border shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">End Date</label>
-              <input
-                type="date"
-                value={filters.endDate}
-                onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                className="block w-full rounded-md border-border shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
-          </div>
+      {/* Filters – always visible, no reload until Apply */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <FiFilter className="h-4 w-4 text-muted-foreground" />
+          Filters
         </div>
-      )}
+        <div className="flex flex-wrap items-end gap-3 p-4 rounded-lg bg-muted/50 border border-border">
+          <div className="min-w-[140px]">
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Status</label>
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">All</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+          <div className="min-w-[160px]">
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Provider</label>
+            <input
+              type="text"
+              value={filters.provider}
+              onChange={(e) => setFilters({ ...filters, provider: e.target.value })}
+              placeholder="Provider name"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </div>
+          <div className="min-w-[140px]">
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Start date</label>
+            <input
+              type="date"
+              value={filters.startDate}
+              onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </div>
+          <div className="min-w-[140px]">
+            <label className="block text-xs font-medium text-muted-foreground mb-1">End date</label>
+            <input
+              type="date"
+              value={filters.endDate}
+              onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </div>
+          <div className="min-w-[160px]">
+            <label className="block text-xs font-medium text-muted-foreground mb-1">By month</label>
+            <select
+              value={filters.filterMonth}
+              onChange={(e) => setFilters({ ...filters, filterMonth: e.target.value })}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">All months</option>
+              {(() => {
+                const opts: { value: string; label: string }[] = [];
+                const now = new Date();
+                for (let i = 0; i < 24; i++) {
+                  const d = new Date(now.getFullYear(), now.getMonth() - 23 + i, 1);
+                  const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                  const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                  opts.push({ value, label });
+                }
+                return opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>);
+              })()}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              let startDate = filters.startDate || undefined;
+              let endDate = filters.endDate || undefined;
+              if (filters.filterMonth) {
+                const [y, m] = filters.filterMonth.split('-').map(Number);
+                const first = new Date(y, m - 1, 1);
+                const last = new Date(y, m, 0);
+                startDate = first.toISOString().slice(0, 10);
+                endDate = last.toISOString().slice(0, 10);
+              }
+              setAppliedFilters({
+                status: filters.status || undefined,
+                provider: filters.provider?.trim() || undefined,
+                startDate,
+                endDate
+              });
+            }}
+            disabled={isRefreshing}
+            className="inline-flex items-center gap-2 px-4 py-2 h-9 text-sm font-medium rounded-md border border-transparent bg-primary text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isRefreshing ? <FiRefreshCw className="h-4 w-4 animate-spin" /> : 'Apply filters'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setFilters({ status: '', provider: '', startDate: '', endDate: '', filterMonth: '' });
+              setAppliedFilters({});
+            }}
+            disabled={isRefreshing}
+            className="inline-flex items-center px-4 py-2 h-9 text-sm font-medium rounded-md border border-border bg-card text-foreground hover:bg-accent focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Clear filters
+          </button>
+        </div>
+      </div>
 
       {/* Invoices List */}
       <div className="bg-card shadow-sm border border-border overflow-hidden sm:rounded-lg">
@@ -973,6 +1130,7 @@ export default function AdminInvoices() {
                     </div>
                     <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                       <button
+                        type="button"
                         onClick={() => handleView(invoice)}
                         className="text-blue-600 hover:text-blue-700 p-1.5 sm:p-1 rounded-md hover:bg-blue-50 transition-colors"
                         title="View invoice details"
@@ -981,6 +1139,7 @@ export default function AdminInvoices() {
                       </button>
                       {invoice.fileUrl && (
                         <button
+                          type="button"
                           onClick={() => handleDownload(invoice)}
                           className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold rounded-md transition-colors shadow-sm ${
                             invoice.status === 'pending'
@@ -998,6 +1157,7 @@ export default function AdminInvoices() {
                       {isAdmin && invoice.status === 'pending' && (
                         <>
                           <button
+                            type="button"
                             onClick={() => handleApprove(invoice.id)}
                             className="text-green-600 hover:text-green-700 p-1.5 sm:p-1 rounded-md hover:bg-green-50 transition-colors"
                             title="Approve invoice"
@@ -1005,6 +1165,7 @@ export default function AdminInvoices() {
                             <FiCheck className="h-4 w-4 sm:h-5 sm:w-5" />
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleReject(invoice.id, invoice.invoiceNumber)}
                             className="text-red-600 hover:text-red-700 p-1.5 sm:p-1 rounded-md hover:bg-red-50 transition-colors"
                             title="Reject invoice"
@@ -1016,6 +1177,7 @@ export default function AdminInvoices() {
                       {(isAdmin || invoice.uploadedBy?.id === user?.id) && (
                         <>
                           <button
+                            type="button"
                             onClick={() => handleEdit(invoice)}
                             className="text-indigo-600 hover:text-indigo-700 p-1.5 sm:p-1 rounded-md hover:bg-indigo-50 transition-colors"
                             title="Edit invoice"
@@ -1024,6 +1186,7 @@ export default function AdminInvoices() {
                             <FiEdit2 className="h-4 w-4 sm:h-5 sm:w-5" />
                           </button>
                           <button
+                            type="button"
                             onClick={() => {
                               setDeletingInvoice(invoice);
                               setShowDeleteConfirm(true);
@@ -1052,6 +1215,7 @@ export default function AdminInvoices() {
             Get started by uploading an invoice.
           </p>
           <button
+            type="button"
             onClick={() => setShowCreateModal(true)}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary hover:bg-blue-700"
           >
@@ -1067,9 +1231,10 @@ export default function AdminInvoices() {
           <div className="bg-card rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-foreground">Upload New Invoice</h2>
-              <button
-                onClick={() => {
-                  setShowCreateModal(false);
+            <button
+              type="button"
+              onClick={() => {
+                setShowCreateModal(false);
                   setToolSearchQuery('');
                   setShowToolDropdown(false);
                   setCreateFormData({
@@ -1080,7 +1245,8 @@ export default function AdminInvoices() {
                     dueDate: '',
                     category: '',
                     organizationId: '',
-                    toolIds: []
+                    toolIds: [],
+                    subscriptionDescription: ''
                   });
                   setCreateFile(null);
                   setAutoFilled(false);
@@ -1255,6 +1421,23 @@ export default function AdminInvoices() {
                 />
               </div>
 
+              <div>
+                <label htmlFor="subscriptionDescription" className="block text-sm font-medium text-foreground mb-2">
+                  Subscription Description (Optional)
+                </label>
+                <textarea
+                  id="subscriptionDescription"
+                  rows={3}
+                  value={createFormData.subscriptionDescription}
+                  onChange={(e) => setCreateFormData({ ...createFormData, subscriptionDescription: e.target.value })}
+                  className="block w-full rounded-md border-border shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border resize-none"
+                  placeholder="Enter a 2-line description about the service/tool (e.g., 'AI-powered language model service\nOpenAI provides GPT models and AI assistants')"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Leave empty to auto-generate based on provider name
+                </p>
+              </div>
+
               <div className="relative">
                 <label htmlFor="toolIds" className="block text-sm font-medium text-foreground mb-2">
                   Link to Tools (Optional)
@@ -1419,7 +1602,8 @@ export default function AdminInvoices() {
                               dueDate: '',
                               category: '',
                               organizationId: createFormData.organizationId,
-                              toolIds: []
+                              toolIds: [] as string[],
+                              subscriptionDescription: ''
                             });
                           }}
                           className="text-sm text-destructive hover:text-red-700"
@@ -1469,7 +1653,8 @@ export default function AdminInvoices() {
                       dueDate: '',
                       category: '',
                       organizationId: '',
-                      toolIds: []
+                      toolIds: [] as string[],
+                      subscriptionDescription: ''
                     });
                     setCreateFile(null);
                   }}
@@ -1771,19 +1956,49 @@ export default function AdminInvoices() {
                   </div>
                 </div>
 
+                {/* Subscription Description */}
+                {viewingInvoice.subscriptionDescription && (
+                  <div className="mt-6 pt-6 border-t border-border">
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 block">Subscription Description</label>
+                    <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+                      <p className="text-sm text-foreground whitespace-pre-line">{viewingInvoice.subscriptionDescription}</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Linked Tools */}
                 {viewingInvoice.tools && viewingInvoice.tools.length > 0 && (
                   <div className="mt-6 pt-6 border-t border-border">
                     <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 block">Linked Tools</label>
-                    <div className="flex flex-wrap gap-2">
-                      {viewingInvoice.tools.map((tool: any) => (
-                        <span 
-                          key={tool.id || tool} 
-                          className="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium bg-primary/20 text-primary border border-primary/30"
-                        >
-                          {typeof tool === 'string' ? tool : (tool.name || tool.id)}
-                        </span>
-                      ))}
+                    <div className="space-y-3">
+                      {viewingInvoice.tools.map((tool: any) => {
+                        const toolName = typeof tool === 'string' ? tool : (tool.name || tool.id || 'Unknown Tool');
+                        const toolDescription = typeof tool === 'object' && tool.description ? tool.description : null;
+                        const toolCategory = typeof tool === 'object' && tool.category ? tool.category : null;
+                        
+                        return (
+                          <div 
+                            key={tool.id || tool} 
+                            className="bg-primary/5 border border-primary/20 rounded-lg p-3"
+                          >
+                            <div className="flex items-start gap-2">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="text-sm font-semibold text-foreground">{toolName}</h4>
+                                  {toolCategory && (
+                                    <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                                      {toolCategory}
+                                    </span>
+                                  )}
+                                </div>
+                                {toolDescription && (
+                                  <p className="text-xs text-muted-foreground mt-1">{toolDescription}</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -1805,6 +2020,7 @@ export default function AdminInvoices() {
                         )}
                       </div>
                       <button
+                        type="button"
                         onClick={() => handleDownload(viewingInvoice)}
                         className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition-colors"
                       >
@@ -1970,19 +2186,49 @@ export default function AdminInvoices() {
                   </div>
                 </div>
 
+                {/* Subscription Description */}
+                {viewingInvoice.subscriptionDescription && (
+                  <div className="mt-6 pt-6 border-t border-border">
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 block">Subscription Description</label>
+                    <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+                      <p className="text-sm text-foreground whitespace-pre-line">{viewingInvoice.subscriptionDescription}</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Linked Tools */}
                 {viewingInvoice.tools && viewingInvoice.tools.length > 0 && (
                   <div className="mt-6 pt-6 border-t border-border">
                     <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 block">Linked Tools</label>
-                    <div className="flex flex-wrap gap-2">
-                      {viewingInvoice.tools.map((tool: any) => (
-                        <span 
-                          key={tool.id || tool} 
-                          className="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium bg-primary/20 text-primary border border-primary/30"
-                        >
-                          {typeof tool === 'string' ? tool : (tool.name || tool.id)}
-                        </span>
-                      ))}
+                    <div className="space-y-3">
+                      {viewingInvoice.tools.map((tool: any) => {
+                        const toolName = typeof tool === 'string' ? tool : (tool.name || tool.id || 'Unknown Tool');
+                        const toolDescription = typeof tool === 'object' && tool.description ? tool.description : null;
+                        const toolCategory = typeof tool === 'object' && tool.category ? tool.category : null;
+                        
+                        return (
+                          <div 
+                            key={tool.id || tool} 
+                            className="bg-primary/5 border border-primary/20 rounded-lg p-3"
+                          >
+                            <div className="flex items-start gap-2">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="text-sm font-semibold text-foreground">{toolName}</h4>
+                                  {toolCategory && (
+                                    <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                                      {toolCategory}
+                                    </span>
+                                  )}
+                                </div>
+                                {toolDescription && (
+                                  <p className="text-xs text-muted-foreground mt-1">{toolDescription}</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -2004,6 +2250,7 @@ export default function AdminInvoices() {
                         )}
                       </div>
                       <button
+                        type="button"
                         onClick={() => handleDownload(viewingInvoice)}
                         className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition-colors"
                       >

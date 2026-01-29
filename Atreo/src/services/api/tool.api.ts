@@ -5,6 +5,7 @@
 
 import type { Tool } from '@/types';
 import { API_ENDPOINTS } from '@/constants';
+import { IMPORT_EXCEL_TIMEOUT } from '@/constants';
 import { BaseApiClient } from './client';
 
 export class ToolApi extends BaseApiClient {
@@ -36,7 +37,10 @@ export class ToolApi extends BaseApiClient {
     });
   }
 
-  async importExcel(file: File): Promise<{
+  async importExcel(
+    file: File,
+    options?: { replaceAll?: boolean }
+  ): Promise<{
     success: boolean;
     message: string;
     imported: number;
@@ -48,6 +52,11 @@ export class ToolApi extends BaseApiClient {
     const formData = new FormData();
     formData.append('file', file);
 
+    const url =
+      options?.replaceAll === true
+        ? '/tools/import-excel?replaceAll=true'
+        : '/tools/import-excel';
+
     return this.request<{
       success: boolean;
       message: string;
@@ -56,10 +65,11 @@ export class ToolApi extends BaseApiClient {
       errors: number;
       errorDetails: Array<{ row: number; toolName: string; error: string }>;
       tools: Array<{ id: string; name: string; category?: string }>;
-    }>('/tools/import-excel', {
+    }>(url, {
       method: 'POST',
       body: formData,
-    });
+      timeout: IMPORT_EXCEL_TIMEOUT,
+    } as RequestInit & { timeout?: number });
   }
 
   async getUsersForSharing(): Promise<Array<{ id: string; name: string; email: string }>> {

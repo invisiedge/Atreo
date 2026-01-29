@@ -21,26 +21,48 @@ const router = express.Router();
  */
 router.post('/login', authLimiter, validateLogin, async (req, res) => {
   try {
+    // Check if database is connected
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      console.error('❌ Database not connected. ReadyState:', mongoose.connection.readyState);
+      return res.status(503).json({ 
+        message: 'Database connection unavailable. Please try again in a moment.',
+        error: 'DATABASE_NOT_CONNECTED'
+      });
+    }
+
     const email = req.body.email?.toLowerCase().trim();
     const { password } = req.body;
     
     // Find user by email
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
-      await logLoginAttempt(req, null, false, 'User not found');
+      try {
+        await logLoginAttempt(req, null, false, 'User not found');
+      } catch (logError) {
+        console.error('Error logging login attempt:', logError);
+      }
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     
     // Check if user is active
     if (!user.isActive) {
-      await logLoginAttempt(req, user, false, 'Account is deactivated');
+      try {
+        await logLoginAttempt(req, user, false, 'Account is deactivated');
+      } catch (logError) {
+        console.error('Error logging login attempt:', logError);
+      }
       return res.status(401).json({ message: 'Account is deactivated' });
     }
     
     // Compare password
     const isValidPassword = await user.comparePassword(password);
     if (!isValidPassword) {
-      await logLoginAttempt(req, null, false, 'Invalid password');
+      try {
+        await logLoginAttempt(req, null, false, 'Invalid password');
+      } catch (logError) {
+        console.error('Error logging login attempt:', logError);
+      }
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     
@@ -49,93 +71,132 @@ router.post('/login', authLimiter, validateLogin, async (req, res) => {
     await user.save();
     
     // Log successful login with user details
-    await logLoginAttempt(req, user, true);
+    try {
+      await logLoginAttempt(req, user, true);
+    } catch (logError) {
+      console.error('Error logging successful login:', logError);
+      // Don't fail login if logging fails
+    }
     
     // Fetch permissions from Permission model (3-layer structure)
-    const permission = await Permission.findOne({ userId: user._id });
+    let permission = null;
+    try {
+      permission = await Permission.findOne({ userId: user._id });
+    } catch (permError) {
+      console.error('Error fetching permissions:', permError);
+      // Continue without permissions - don't fail login
+    }
     
     const userData = user.toJSON();
-    if (permission && permission.modules) {
-      const permissionsObj = { modules: {} };
-      
-      if (permission.modules instanceof Map) {
-        permission.modules.forEach((moduleData, moduleName) => {
-          permissionsObj.modules[moduleName] = {};
-          if (moduleData.pages instanceof Map) {
-            permissionsObj.modules[moduleName].pages = {};
-            moduleData.pages.forEach((pageData, pageName) => {
-              permissionsObj.modules[moduleName].pages[pageName] = {
-                read: pageData.read || false,
-                write: pageData.write || false
-              };
+    
+    // Handle permissions with defensive checks
+    try {
+      if (permission && permission.modules) {
+        const permissionsObj = { modules: {} };
+        
+        if (permission.modules instanceof Map) {
+          permission.modules.forEach((moduleData, moduleName) => {
+            if (!moduleData || typeof moduleName !== 'string') return;
+            
+            permissionsObj.modules[moduleName] = {};
+            if (moduleData && moduleData.pages instanceof Map) {
+              permissionsObj.modules[moduleName].pages = {};
+              moduleData.pages.forEach((pageData, pageName) => {
+                if (!pageData || typeof pageName !== 'string') return;
+                permissionsObj.modules[moduleName].pages[pageName] = {
+                  read: pageData.read || false,
+                  write: pageData.write || false
+                };
+              });
+            }
+          });
+        } else if (permission.modules && typeof permission.modules === 'object') {
+          // Fallback for plain object if not Map
+          try {
+            Object.entries(permission.modules).forEach(([moduleName, moduleData]) => {
+              if (!moduleData || typeof moduleName !== 'string') return;
+              
+              permissionsObj.modules[moduleName] = { pages: {} };
+              if (moduleData && moduleData.pages && typeof moduleData.pages === 'object') {
+                Object.entries(moduleData.pages).forEach(([pageName, pageData]) => {
+                  if (!pageData || typeof pageName !== 'string') return;
+                  permissionsObj.modules[moduleName].pages[pageName] = {
+                    read: pageData.read || false,
+                    write: pageData.write || false
+                  };
+                });
+              }
             });
+          } catch (objError) {
+            console.error('Error processing permission modules as object:', objError);
           }
-        });
+        }
+        
+        userData.permissions = permissionsObj;
       } else {
-        // Fallback for plain object if not Map
-        Object.entries(permission.modules).forEach(([moduleName, moduleData]) => {
-          permissionsObj.modules[moduleName] = { pages: {} };
-          if (moduleData.pages) {
-            Object.entries(moduleData.pages).forEach(([pageName, pageData]) => {
-              permissionsObj.modules[moduleName].pages[pageName] = {
-                read: pageData.read || false,
-                write: pageData.write || false
-              };
-            });
-          }
-        });
+        // No Permission model found - use User model's permissions array for backward compatibility
+        if (!userData.permissions || !Array.isArray(userData.permissions)) {
+          userData.permissions = [];
+        }
       }
-      
-      userData.permissions = permissionsObj;
-    } else {
-      // No Permission model found - use User model's permissions array for backward compatibility
-      if (!userData.permissions || !Array.isArray(userData.permissions)) {
-        userData.permissions = [];
-      }
+    } catch (permProcessError) {
+      console.error('Error processing permissions:', permProcessError);
+      // Set default permissions if processing fails
+      userData.permissions = userData.permissions || [];
     }
     
     // If user is an admin, also get their admin role
     let adminRole = null;
     if (user.role === 'admin') {
-      let admin = await Admin.findOne({ userId: user._id });
-      
-      // If admin record doesn't exist but user matches configured admin email, create it as super-admin
-      const adminEmail = process.env.ADMIN_EMAIL;
-      if (!admin && user.email === adminEmail) {
-        // Check if ADM0001 already exists to avoid duplicate key error
-        const existingAdmin = await Admin.findOne({ adminId: 'ADM0001' });
+      try {
+        let admin = await Admin.findOne({ userId: user._id });
         
-        if (existingAdmin) {
-          existingAdmin.userId = user._id;
-          await existingAdmin.save();
-          admin = existingAdmin;
-        } else {
-          admin = new Admin({
-            userId: user._id,
-            adminId: 'ADM0001',
-            name: user.name,
-            email: user.email,
-            role: 'super-admin',
-            department: 'IT Administration',
-            phone: '+1 (555) 000-0001',
-            permissions: {
-              canManageUsers: true,
-              canManageEmployees: true,
-              canManageAdmins: true,
-              canManagePayroll: true,
-              canViewReports: true,
-              canExportData: true
-            },
-            status: 'active',
-            notes: 'Primary system administrator'
-          });
-          await admin.save();
+        // If admin record doesn't exist but user matches configured admin email, create it as super-admin
+        const adminEmail = process.env.ADMIN_EMAIL;
+        if (!admin && user.email === adminEmail) {
+          try {
+            // Check if ADM0001 already exists to avoid duplicate key error
+            const existingAdmin = await Admin.findOne({ adminId: 'ADM0001' });
+            
+            if (existingAdmin) {
+              existingAdmin.userId = user._id;
+              await existingAdmin.save();
+              admin = existingAdmin;
+            } else {
+              admin = new Admin({
+                userId: user._id,
+                adminId: 'ADM0001',
+                name: user.name,
+                email: user.email,
+                role: 'super-admin',
+                department: 'IT Administration',
+                phone: '+1 (555) 000-0001',
+                permissions: {
+                  canManageUsers: true,
+                  canManageEmployees: true,
+                  canManageAdmins: true,
+                  canManagePayroll: true,
+                  canViewReports: true,
+                  canExportData: true
+                },
+                status: 'active',
+                notes: 'Primary system administrator'
+              });
+              await admin.save();
+            }
+          } catch (adminCreateError) {
+            console.error('Error creating admin record:', adminCreateError);
+            // Continue without admin role - don't fail login
+          }
         }
-      }
-      
-      if (admin) {
-        adminRole = admin.role;
-        userData.adminRole = admin.role;
+        
+        if (admin) {
+          adminRole = admin.role;
+          userData.adminRole = admin.role;
+        }
+      } catch (adminError) {
+        console.error('Error fetching admin role:', adminError);
+        // Continue without admin role - don't fail login
       }
     }
     
@@ -163,7 +224,16 @@ router.post('/login', authLimiter, validateLogin, async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ message: 'Server error during login' });
+    console.error('Error stack:', error.stack);
+    console.error('Error details:', {
+      message: error.message,
+      name: error.name,
+      code: error.code
+    });
+    res.status(500).json({ 
+      message: 'Server error during login',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { FiTool, FiPlus, FiTrash2, FiEye, FiEyeOff, FiRefreshCw, FiDollarSign, FiShield, FiCreditCard, FiX, FiDownload, FiChevronDown, FiMove, FiKey, FiShare2, FiUsers, FiUpload, FiActivity, FiGrid, FiSearch, FiCheck, FiCalendar } from 'react-icons/fi';
+import { FiTool, FiPlus, FiTrash2, FiEye, FiEyeOff, FiRefreshCw, FiDollarSign, FiShield, FiCreditCard, FiX, FiDownload, FiChevronDown, FiKey, FiShare2, FiUsers, FiUpload, FiActivity, FiSearch } from 'react-icons/fi';
 import { apiClient } from '../../services/api';
 import { useToast } from '../../hooks/useToast';
 import ConfirmModal from '../../components/shared/ConfirmModal';
@@ -31,8 +31,11 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterDate, setFilterDate] = useState('all');
-  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [showDateDropdown, setShowDateDropdown] = useState(false);
+  const [filterPaid, setFilterPaid] = useState<'all' | 'paid' | 'unpaid'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>('all');
+  const [filterBillingPeriod, setFilterBillingPeriod] = useState<string>('all');
+  const [filterOrganizationName, setFilterOrganizationName] = useState<string>('all');
   const [showCreateCategoryDropdown, setShowCreateCategoryDropdown] = useState(false);
   const [showEditCategoryDropdown, setShowEditCategoryDropdown] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
@@ -47,6 +50,7 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
   const [selectedTool, setSelectedTool] = useState<any>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [importingExcel, setImportingExcel] = useState(false);
+  const [exportingCredentials, setExportingCredentials] = useState(false);
   const [importResult, setImportResult] = useState<{
     success: boolean;
     message: string;
@@ -61,6 +65,7 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
     name: string;
     description: string;
     category: string;
+    organizationId: string;
     username: string;
     password: string;
     apiKey: string;
@@ -77,10 +82,12 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
     status: 'active' | 'inactive';
   };
 
+  const [organizations, setOrganizations] = useState<Array<{ id: string; name: string }>>([]);
   const [formData, setFormData] = useState<ToolFormData>({
     name: '',
     description: '',
     category: '',
+    organizationId: '',
     username: '',
     password: '',
     apiKey: '',
@@ -264,22 +271,27 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
 
   useEffect(() => {
     loadTools();
-    // Only load users if not in read-only mode (accountants don't need user list for sharing)
     if (!readOnly) {
       loadUsers();
     }
   }, [readOnly]);
 
-  // Close dropdown when clicking outside
+  useEffect(() => {
+    const loadOrganizations = async () => {
+      try {
+        const list = await apiClient.getOrganizations();
+        setOrganizations(list.map((o: any) => ({ id: o.id || o._id, name: o.name || '' })));
+      } catch (err) {
+        console.error('Error loading organizations:', err);
+      }
+    };
+    loadOrganizations();
+  }, []);
+
+  // Close dropdown when clicking outside (create/edit category only)
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (showCategoryDropdown && !target.closest('.category-filter-dropdown')) {
-        setShowCategoryDropdown(false);
-      }
-      if (showDateDropdown && !target.closest('.date-filter-dropdown')) {
-        setShowDateDropdown(false);
-      }
       if (showCreateCategoryDropdown && !target.closest('.create-category-dropdown')) {
         setShowCreateCategoryDropdown(false);
       }
@@ -290,7 +302,7 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showCategoryDropdown, showDateDropdown, showCreateCategoryDropdown, showEditCategoryDropdown]);
+  }, [showCreateCategoryDropdown, showEditCategoryDropdown]);
 
   const loadUsers = async () => {
     try {
@@ -360,6 +372,62 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
     }
   };
 
+  const handleExportCredentials = () => {
+    const dataToExport = filteredTools;
+    if (dataToExport.length === 0) {
+      showToast('No credentials to export', 'warning');
+      return;
+    }
+    setExportingCredentials(true);
+    try {
+      const escapeCsv = (val: string) => {
+        const s = String(val ?? '');
+        if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      const headers = ['Tool Name', 'Organization Name', 'Category', 'Description', 'Username', 'Password', '2FA Enabled', '2FA Method', 'Payment Method (Pricing)', 'Paid/Free', 'Comments'];
+      const rows = dataToExport.map((tool: any) => {
+        const orgName = tool.organizationId && typeof tool.organizationId === 'object' && 'name' in tool.organizationId
+          ? String((tool.organizationId as { name?: string }).name ?? '')
+          : '';
+        const paymentInfo = tool.isPaid && tool.price
+          ? `${tool.paymentMethod || 'other'} $${tool.price} ${tool.billingPeriod === 'yearly' ? 'yearly' : 'monthly'}`
+          : '';
+        const paidFree = tool.isPaid ? 'Paid' : 'Free';
+        const twoFA = tool.has2FA ? 'Yes' : 'No';
+        const twoFAMethod = tool.twoFactorMethod || '';
+        return [
+          escapeCsv(tool.name ?? ''),
+          escapeCsv(orgName),
+          escapeCsv(tool.category ?? ''),
+          escapeCsv(tool.description ?? ''),
+          escapeCsv(tool.username ?? ''),
+          escapeCsv(tool.password ?? ''),
+          escapeCsv(twoFA),
+          escapeCsv(twoFAMethod),
+          escapeCsv(paymentInfo),
+          escapeCsv(paidFree),
+          escapeCsv(tool.notes ?? '')
+        ].join(',');
+      });
+      const csv = [headers.join(','), ...rows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `credentials_export_${new Date().toISOString().slice(0, 10)}.csv`;
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+      showToast(`Exported ${dataToExport.length} credential(s) to CSV`, 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Export failed', 'error');
+    } finally {
+      setExportingCredentials(false);
+    }
+  };
+
   const formatDate = (date: string | Date) => {
     const d = new Date(date);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -392,6 +460,7 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
 
       await apiClient.createTool({
         ...formData,
+        organizationId: formData.organizationId || undefined,
         twoFactorMethod: formData.twoFactorMethod || null,
         paymentMethod: formData.paymentMethod || null,
         tags: [], // Tags removed - not displayed
@@ -402,6 +471,7 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
         name: '',
         description: '',
         category: '',
+        organizationId: '',
         username: '',
         password: '',
         apiKey: '',
@@ -427,10 +497,14 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
 
   const handleEdit = (tool: any) => {
     setSelectedTool(tool);
+    const orgId = tool.organizationId
+      ? (typeof tool.organizationId === 'object' ? (tool.organizationId as any).id ?? (tool.organizationId as any)._id : tool.organizationId)
+      : '';
     setFormData({
       name: tool.name || '',
       description: tool.description || '',
       category: tool.category || '',
+      organizationId: orgId || '',
       username: tool.username || '',
       password: tool.password || '',
       apiKey: tool.apiKey || '',
@@ -469,6 +543,7 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
 
       await apiClient.updateTool(selectedTool.id, {
         ...formData,
+        organizationId: formData.organizationId || undefined,
         twoFactorMethod: formData.twoFactorMethod || null,
         paymentMethod: formData.paymentMethod || null,
         tags: [], // Tags removed - not displayed
@@ -618,8 +693,47 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
       }
     }
 
-    return matchesSearch && matchesCategory && matchesDate;
+    // Paid / Unpaid filter
+    const matchesPaid =
+      filterPaid === 'all' ||
+      (filterPaid === 'paid' && tool.isPaid) ||
+      (filterPaid === 'unpaid' && !tool.isPaid);
+
+    // Status filter (active / inactive)
+    const matchesStatus =
+      filterStatus === 'all' ||
+      (filterStatus === 'active' && (tool.status === 'active' || !tool.status)) ||
+      (filterStatus === 'inactive' && tool.status === 'inactive');
+
+    // Payment method filter
+    const matchesPaymentMethod =
+      filterPaymentMethod === 'all' ||
+      (tool.paymentMethod && String(tool.paymentMethod).toLowerCase() === filterPaymentMethod);
+
+    // Billing period filter
+    const matchesBillingPeriod =
+      filterBillingPeriod === 'all' ||
+      (tool.billingPeriod && String(tool.billingPeriod).toLowerCase() === filterBillingPeriod);
+
+    // Organization filter (all orgs from tool.organizationId)
+    const orgName = tool.organizationId && typeof tool.organizationId === 'object' && 'name' in tool.organizationId
+      ? String((tool.organizationId as { name?: string }).name || '').trim()
+      : '';
+    const matchesOrganization =
+      filterOrganizationName === 'all' ||
+      (orgName && orgName.toLowerCase() === filterOrganizationName.toLowerCase());
+
+    return matchesSearch && matchesCategory && matchesDate && matchesPaid && matchesStatus && matchesPaymentMethod && matchesBillingPeriod && matchesOrganization;
   });
+
+  const uniqueOrganizationNames = useMemo(() => {
+    const names = new Set<string>();
+    tools.forEach(t => {
+      const n = t.organizationId?.name;
+      if (n != null && String(n).trim()) names.add(String(n).trim());
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [tools]);
 
   const toolStats = useMemo(() => {
     const total = tools.length;
@@ -725,109 +839,96 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
       {/* Enhanced Action Bar */}
       <div className="bg-gradient-to-r from-white to-gray-50 dark:from-gray-900 dark:to-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
         <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
-          {/* Left Section - Filters & Search */}
+          {/* Left Section - Filter dropdowns & Search */}
           <div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
-            {/* Category Dropdown */}
-            <div className="relative category-filter-dropdown">
-              <button
-                onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-all duration-200 shadow-sm hover:shadow"
-              >
-                <FiGrid className="h-4 w-4 text-gray-500" />
-                <span>{SERVICE_CATEGORIES.find(cat => cat.id === filterCategory)?.name}</span>
-                <FiChevronDown className={`h-4 w-4 transition-transform duration-200 ${showCategoryDropdown ? 'rotate-180' : ''}`} />
-              </button>
-
-              {showCategoryDropdown && (
-                <div className="absolute left-0 mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 max-h-96 overflow-y-auto">
-                  <div className="py-2">
-                    {SERVICE_CATEGORIES.map(category => (
-                      <button
-                        key={category.id}
-                        onClick={() => {
-                          setFilterCategory(category.id);
-                          setShowCategoryDropdown(false);
-                        }}
-                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center gap-2 ${
-                          filterCategory === category.id 
-                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold border-l-3 border-blue-500' 
-                            : 'text-gray-700 dark:text-gray-300'
-                        }`}
-                      >
-                        {filterCategory === category.id && <FiCheck className="h-4 w-4" />}
-                        {category.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Date Filter Dropdown */}
-            <div className="relative date-filter-dropdown">
-              <button
-                onClick={() => {
-                  setShowDateDropdown(!showDateDropdown);
-                  setShowCategoryDropdown(false);
-                }}
-                className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-all duration-200 shadow-sm hover:shadow"
-              >
-                <FiCalendar className="h-4 w-4 text-gray-500" />
-                <span>
-                  {filterDate === 'all' ? 'Date' : 
-                   filterDate === 'today' ? 'Today' :
-                   filterDate === 'this-week' ? 'This Week' :
-                   filterDate === 'this-month' ? 'This Month' :
-                   filterDate === 'last-30-days' ? 'Last 30 Days' :
-                   filterDate === 'last-90-days' ? 'Last 90 Days' :
-                   filterDate === 'this-year' ? 'This Year' : 'Date'}
-                </span>
-                <FiChevronDown className={`h-4 w-4 transition-transform duration-200 ${showDateDropdown ? 'rotate-180' : ''}`} />
-              </button>
-
-              {showDateDropdown && (
-                <div className="absolute left-0 mt-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50">
-                  <div className="py-2">
-                    {[
-                      { id: 'all', name: 'All Time' },
-                      { id: 'today', name: 'Today' },
-                      { id: 'this-week', name: 'This Week' },
-                      { id: 'this-month', name: 'This Month' },
-                      { id: 'last-30-days', name: 'Last 30 Days' },
-                      { id: 'last-90-days', name: 'Last 90 Days' },
-                      { id: 'this-year', name: 'This Year' }
-                    ].map(dateOption => (
-                      <button
-                        key={dateOption.id}
-                        onClick={() => {
-                          setFilterDate(dateOption.id);
-                          setShowDateDropdown(false);
-                        }}
-                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors flex items-center gap-2 ${
-                          filterDate === dateOption.id 
-                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-semibold border-l-3 border-blue-500' 
-                            : 'text-gray-700 dark:text-gray-300'
-                        }`}
-                      >
-                        {filterDate === dateOption.id && <FiCheck className="h-4 w-4" />}
-                        {dateOption.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* View Options */}
-            <button 
-              className="p-2.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-all duration-200"
-              title="View Options"
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0 hidden sm:inline">Filters:</span>
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="min-w-[120px] px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
             >
-              <FiMove className="h-5 w-5" />
+              <option value="all">Category</option>
+              {SERVICE_CATEGORIES.filter(c => c.id !== 'all').map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+            <select
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              className="min-w-[120px] px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+            >
+              <option value="all">Date</option>
+              <option value="today">Today</option>
+              <option value="this-week">This Week</option>
+              <option value="this-month">This Month</option>
+              <option value="last-30-days">Last 30 Days</option>
+              <option value="last-90-days">Last 90 Days</option>
+              <option value="this-year">This Year</option>
+            </select>
+            <select
+              value={filterPaid}
+              onChange={(e) => setFilterPaid(e.target.value as 'all' | 'paid' | 'unpaid')}
+              className="min-w-[100px] px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+            >
+              <option value="all">Payment</option>
+              <option value="paid">Paid</option>
+              <option value="unpaid">Unpaid</option>
+            </select>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value as 'all' | 'active' | 'inactive')}
+              className="min-w-[100px] px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+            >
+              <option value="all">Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+            <select
+              value={filterPaymentMethod}
+              onChange={(e) => setFilterPaymentMethod(e.target.value)}
+              className="min-w-[100px] px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+            >
+              <option value="all">Pay method</option>
+              <option value="card">Card</option>
+              <option value="bank">Bank</option>
+              <option value="paypal">PayPal</option>
+              <option value="other">Other</option>
+            </select>
+            <select
+              value={filterBillingPeriod}
+              onChange={(e) => setFilterBillingPeriod(e.target.value)}
+              className="min-w-[100px] px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+            >
+              <option value="all">Billing</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+            <select
+              value={filterOrganizationName}
+              onChange={(e) => setFilterOrganizationName(e.target.value)}
+              className="min-w-[160px] px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+            >
+              <option value="all">Organization</option>
+              {uniqueOrganizationNames.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                setFilterCategory('all');
+                setFilterDate('all');
+                setFilterPaid('all');
+                setFilterStatus('all');
+                setFilterPaymentMethod('all');
+                setFilterBillingPeriod('all');
+                setFilterOrganizationName('all');
+              }}
+              className="px-3 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors shrink-0"
+            >
+              Clear filters
             </button>
-
-            {/* Divider */}
-            <div className="hidden sm:block h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
+            <div className="hidden sm:block h-6 w-px bg-gray-300 dark:bg-gray-600 shrink-0" />
 
             {/* Enhanced Global Search */}
             <div className="relative flex-1 min-w-[280px] max-w-md">
@@ -854,9 +955,18 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
           {!readOnly && (
             <div className="flex flex-wrap items-center gap-2.5">
               {/* Export Button */}
-              <button className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-all duration-200 shadow-sm hover:shadow">
-                <FiDownload className="h-4 w-4" />
-                <span className="hidden sm:inline">Export</span>
+              <button
+                type="button"
+                onClick={handleExportCredentials}
+                disabled={exportingCredentials || filteredTools.length === 0}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-all duration-200 shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {exportingCredentials ? (
+                  <FiRefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FiDownload className="h-4 w-4" />
+                )}
+                <span className="hidden sm:inline">{exportingCredentials ? 'Exporting...' : 'Export'}</span>
               </button>
 
               {/* Delete All Button */}
@@ -868,18 +978,18 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
                 <span className="hidden sm:inline">Delete All</span>
               </button>
 
-              {/* Import Excel Button */}
+              {/* Import Excel */}
               <label className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-green-600 to-green-700 rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 shadow-md hover:shadow-lg cursor-pointer">
-                <FiUpload className="h-4 w-4" />
-                <span className="hidden sm:inline">{importingExcel ? 'Importing...' : 'Import Excel'}</span>
-                <span className="sm:hidden">{importingExcel ? '...' : 'Import'}</span>
-                <input
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  onChange={handleImportExcel}
-                  disabled={importingExcel}
-                  className="hidden"
-                />
+                  <FiUpload className="h-4 w-4" />
+                  <span className="hidden sm:inline">{importingExcel ? 'Importing...' : 'Import Excel'}</span>
+                  <span className="sm:hidden">{importingExcel ? '...' : 'Import'}</span>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleImportExcel}
+                    disabled={importingExcel}
+                    className="hidden"
+                  />
               </label>
 
               {/* Add Credential Button */}
@@ -889,6 +999,7 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
                     name: '',
                     description: '',
                     category: '',
+                    organizationId: '',
                     username: '',
                     password: '',
                     apiKey: '',
@@ -1012,7 +1123,7 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
                         <p className="text-xs text-gray-500">
                           {error ? (
                             <span className="text-red-600">{error}</span>
-                          ) : searchTerm || filterCategory !== 'all' || filterDate !== 'all' ? (
+                          ) : searchTerm || filterCategory !== 'all' || filterDate !== 'all' || filterPaid !== 'all' || filterStatus !== 'all' || filterPaymentMethod !== 'all' || filterBillingPeriod !== 'all' || filterOrganizationName !== 'all' ? (
                             'Try adjusting your filters'
                           ) : (
                             readOnly 
@@ -1058,6 +1169,11 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
                   <span>Errors: <strong className="text-destructive">{importResult.errors}</strong></span>
                 )}
               </div>
+              {importResult.imported === 0 && importResult.skipped > 0 && (
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-2 p-2 bg-amber-50 dark:bg-amber-900/20 rounded border border-amber-200 dark:border-amber-800">
+                  All rows were skipped (likely duplicates). Ensure your Excel has a column named <strong>Tool Name</strong> (or <strong>Tools Name</strong>).
+                </p>
+              )}
               {importResult.errorDetails && importResult.errorDetails.length > 0 && (
                 <details className="mt-2">
                   <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
@@ -1187,6 +1303,20 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
                         ))}
                       </div>
                     )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-2">Organization</label>
+                    <select
+                      value={formData.organizationId}
+                      onChange={(e) => setFormData({ ...formData, organizationId: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-background focus:bg-white"
+                    >
+                      <option value="">Select organization (optional)</option>
+                      {organizations.map((org) => (
+                        <option key={org.id} value={org.id}>{org.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -1514,6 +1644,20 @@ export default function AdminTools({ readOnly = false }: AdminToolsProps) {
                         ))}
                       </div>
                     )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-2">Organization</label>
+                    <select
+                      value={formData.organizationId}
+                      onChange={(e) => setFormData({ ...formData, organizationId: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-background focus:bg-white"
+                    >
+                      <option value="">Select organization (optional)</option>
+                      {organizations.map((org) => (
+                        <option key={org.id} value={org.id}>{org.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 

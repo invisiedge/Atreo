@@ -41,6 +41,14 @@ export interface DashboardStats {
   activeDomains: number;
   domainsByStatus: Array<{ name: string; value: number }>;
   spendByOrganization: Array<{ name: string; value: number }>;
+  /** Invoice status grouped by total $ (pending, approved, rejected) */
+  invoiceStatusByAmount?: Array<{ name: string; value: number }>;
+  /** Total $ of approved invoices past due date */
+  overdueInvoicesAmount?: number;
+  /** Top vendors by spend (provider → sum amount) */
+  topVendorsBySpend?: Array<{ name: string; value: number }>;
+  /** Spend by invoice category (approved invoices) */
+  invoiceCategories?: Array<{ name: string; value: number }>;
 }
 
 export interface UserDashboardStats {

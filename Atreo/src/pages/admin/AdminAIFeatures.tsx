@@ -12,39 +12,34 @@ export default function AdminAIFeatures() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: `Hello! I'm your SUPER INTELLIGENT AI assistant for Atreo. I have COMPLETE ACCESS to your entire database with comprehensive knowledge of:
+      content: `Hello! I'm your AI assistant for Atreo with **full knowledge of your entire database**. I can answer any question about your data.
 
-## Welcome to AI Intelligence
+## Full Database Access
 
-**Summary:** I'm equipped with deep knowledge of ALL your invoices, tools, financial data, analytics, and more. I can answer complex questions, provide trend analysis, identify patterns, and make intelligent recommendations.
+I have access to **all** of your Atreo data:
+- **Credentials / Tools** – names, categories, usernames, passwords, pricing, organizations, 2FA, payment methods
+- **Invoices** – invoice numbers, amounts, providers, billing dates, status, categories
+- **Users & Employees** – names, emails, roles, departments, status
+- **Organizations** – names, domains
+- **Payments** – amounts, providers, dates, status
+- **Assets & Domains** – inventory, status, expiry
+- **Emails** – email list (addresses, domains, providers)
+- **Customers** – names, emails, companies, status, revenue
+- **Submissions** – employee submissions, amounts, approval status
 
-### 🧠 My Capabilities
-- **Complete Database Access:** ALL invoices, tools, users, employees, assets, domains, payments, organizations
-- **Financial Intelligence:** Spending analysis, trends, top tools, invoice breakdowns, category analysis
-- **Trend Analysis:** Monthly patterns, growth trends, spending forecasts
-- **Pattern Recognition:** Identify anomalies, opportunities, and optimization areas
-- **Comprehensive Analytics:** Dashboard statistics, tool inventory, invoice status, provider analysis
-
-### 💡 Example Questions You Can Ask
+### Example questions you can ask
 - "What are our top 10 most expensive tools and their monthly costs?"
-- "Show me invoice trends for the last 6 months"
-- "Which provider has the highest total invoice amount?"
-- "What's our total monthly recurring spend across all tools?"
-- "Compare spending by category this month vs last month"
-- "Which tools are we paying for but not actively using?"
-- "What's the breakdown of invoice statuses and amounts?"
-- "Show me all pending invoices and their total value"
-- "What are the spending trends by organization?"
-- "Analyze our tool usage and recommend cost optimizations"
+- "Show me all credentials for [organization name]"
+- "List pending invoices and total amount"
+- "How many users and employees do we have?"
+- "What emails do we have for domain X?"
+- "Show me customers with highest revenue"
+- "Invoice trends for the last 6 months"
+- "Which tools are paid vs free?"
+- "Total monthly recurring spend across all tools"
+- "Analyze our data and recommend cost optimizations"
 
-### 🎯 Intelligence Features
-- **Deep Analysis:** I analyze ALL your data, not just summaries
-- **Trend Insights:** I identify patterns across time periods
-- **Financial Intelligence:** I calculate complex metrics and projections
-- **Actionable Recommendations:** I provide specific, data-driven suggestions
-
-### Summary
-I'm your intelligent data analyst. Ask me ANYTHING about your invoices, tools, spending, trends, or any aspect of your Atreo database, and I'll provide comprehensive, intelligent answers with detailed analysis.`,
+Ask me **anything** about your invoices, credentials, users, employees, organizations, payments, assets, domains, emails, or customers—I'll answer using the full database.`,
       timestamp: new Date()
     }
   ]);
@@ -173,6 +168,7 @@ Please format the response professionally with clear sections, bullet points, an
     let inTable = false;
     let tableRows: string[][] = [];
     let tableHeaders: string[] = [];
+    let pendingTableRows: string[][] = []; // Buffer until we see a separator (only then treat as table)
     
     // Helper function to parse and render table
     const renderTable = () => {
@@ -229,21 +225,13 @@ Please format the response professionally with clear sections, bullet points, an
     const processLine = (line: string, index: number) => {
       const trimmed = line.trim();
       
-      // Check if line is a table row (contains |)
-      const isTableRow = trimmed.includes('|') && trimmed.split('|').length > 2;
-      const isTableSeparator = trimmed.match(/^\|[\s\-:]+\|/);
+      // Only treat as table when we see a real markdown separator (|---|---| or | --- | --- |)
+      const isTableSeparator = trimmed.includes('|') && /^[\s|\-:]+\s*$/.test(trimmed) && /[\-:]/.test(trimmed);
+      const hasPipeCells = trimmed.includes('|') && trimmed.split('|').map(c => c.trim()).filter(Boolean).length >= 2;
+      const looksLikeTableRow = hasPipeCells && /^\|?.+\|/.test(trimmed);
       
-      if (isTableSeparator) {
-        // This is a table separator, mark that we have headers
-        if (tableRows.length > 0) {
-          tableHeaders = tableRows[0];
-          tableRows = tableRows.slice(1);
-        }
-        inTable = true;
-        return;
-      }
-      
-      if (isTableRow) {
+      if (isTableSeparator && /[\-\:]+/.test(trimmed)) {
+        // Real markdown table separator – promote buffered rows to table
         if (inList) {
           formatted.push(
             listType === 'ul' ? (
@@ -259,22 +247,59 @@ Please format the response professionally with clear sections, bullet points, an
           listItems = [];
           inList = false;
         }
-        
-        // Parse table row
-        const cells = trimmed.split('|').map(cell => cell.trim()).filter(cell => cell !== '');
-        if (cells.length > 0) {
-          tableRows.push(cells);
+        if (pendingTableRows.length > 0) {
+          tableHeaders = pendingTableRows[0];
+          tableRows = pendingTableRows.slice(1);
+          pendingTableRows = [];
         }
         inTable = true;
         return;
-      } else if (inTable) {
-        // End of table, render it
+      }
+      
+      if (looksLikeTableRow) {
+        const cells = trimmed.split('|').map(cell => cell.trim()).filter(cell => cell !== '');
+        if (cells.length === 0) return;
+        if (inList) {
+          formatted.push(
+            listType === 'ul' ? (
+              <ul key={`list-${index}`} className="list-disc list-inside space-y-1 mb-3">
+                {listItems}
+              </ul>
+            ) : (
+              <ol key={`list-${index}`} className="list-decimal list-inside space-y-1 mb-3">
+                {listItems}
+              </ol>
+            )
+          );
+          listItems = [];
+          inList = false;
+        }
+        if (inTable) {
+          tableRows.push(cells);
+        } else {
+          pendingTableRows.push(cells);
+        }
+        return;
+      }
+      
+      // Not a table row – flush pending rows as paragraphs (so "x | y" in prose stays text) or end table
+      if (inTable) {
         if (tableRows.length > 0 || tableHeaders.length > 0) {
           formatted.push(renderTable() as React.ReactElement);
         }
         tableRows = [];
         tableHeaders = [];
         inTable = false;
+      }
+      if (pendingTableRows.length > 0) {
+        pendingTableRows.forEach((row, ri) => {
+          formatted.push(
+            <p key={`pending-${index}-${ri}`} className="text-gray-700 mb-2 leading-relaxed">
+              {formatInlineMarkdown(row.join(' | '))}
+            </p>
+          );
+        });
+        pendingTableRows = [];
       }
       
       // Headers
@@ -462,6 +487,16 @@ Please format the response professionally with clear sections, bullet points, an
       if (tableElement) {
         formatted.push(tableElement as React.ReactElement);
       }
+    }
+    // Flush pending table rows as paragraphs (no separator was seen)
+    if (pendingTableRows.length > 0) {
+      pendingTableRows.forEach((row, ri) => {
+        formatted.push(
+          <p key={`pending-final-${ri}`} className="text-gray-700 mb-2 leading-relaxed">
+            {formatInlineMarkdown(row.join(' | '))}
+          </p>
+        );
+      });
     }
     
     // Close any remaining list

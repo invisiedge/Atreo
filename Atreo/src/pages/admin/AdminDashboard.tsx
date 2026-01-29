@@ -16,8 +16,13 @@ import {
     FiFolder,
     FiGlobe,
     FiPieChart,
-    FiBarChart
+    FiBarChart,
+    FiDownload,
+    FiMaximize2,
+    FiMinimize2,
+    FiFilter
   } from 'react-icons/fi';
+import { useAuth } from '../../context/AuthContext';
 import { DashboardService, type DashboardStats } from '../../services/dashboardService';
 import { logger } from '../../lib/logger';
 import { Button } from '@/components/ui/button';
@@ -38,7 +43,10 @@ import {
   Filler
 } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
+import zoomPlugin from 'chartjs-plugin-zoom';
+import annotationPlugin from 'chartjs-plugin-annotation';
 import { Bar, Line, Pie, Doughnut } from 'react-chartjs-2';
+import { CHART_COLORS as THEME_COLORS, CHART_ANIMATION, CHART_STYLES } from '@/config/chartTheme';
 
 // Register Chart.js components
 ChartJS.register(
@@ -52,125 +60,125 @@ ChartJS.register(
   Tooltip,
   Legend,
   Filler,
-  ChartDataLabels
+  ChartDataLabels,
+  zoomPlugin,
+  annotationPlugin
 );
 
-// Chart colors using CSS variables for dark mode support
-const getChartColors = () => {
-  return [
-    'hsl(221.2 83.2% 53.3%)',
-    'hsl(142.1 76.2% 36.3%)',
-    'hsl(262.1 83.3% 57.8%)',
-    'hsl(346.8 77.2% 49.8%)',
-    'hsl(45.4 93.4% 47.5%)',
-    'hsl(189 85% 52%)',
-    'hsl(324 86% 60%)',
-    'hsl(168 76% 42%)'
-  ];
-};
+// Single palette from theme – all charts use same library (Chart.js) and same colors
+const CHART_COLORS = THEME_COLORS.series;
 
-// Get theme-aware grid and border colors
+const FONT_FAMILY = 'Inter, system-ui, -apple-system, sans-serif';
+
+// Theme-aware grid (works in light/dark)
 const getGridColor = () => {
-  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
-  return isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+  if (typeof document === 'undefined') return 'rgba(0, 0, 0, 0.08)';
+  const isDark = document.documentElement.classList.contains('dark');
+  return isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)';
 };
 
-const CHART_COLORS = getChartColors();
-
-// Enhanced Chart.js default options with animations and better styling
-const chartOptions = {
+/**
+ * Single professional chart options – same library (Chart.js), consistent look.
+ * Used by every chart on the dashboard.
+ */
+const getCleanChartOptions = (opts?: { indexAxis?: 'y'; dualAxis?: boolean }) => ({
   responsive: true,
   maintainAspectRatio: false,
   animation: {
-    duration: 1500,
-    easing: 'easeInOutQuart' as const,
-    delay: (context: { type: string; mode: string; dataIndex: number }) => {
-      let delay = 0;
-      if (context.type === 'data' && context.mode === 'default') {
-        delay = context.dataIndex * 50;
-      }
-      return delay;
-    }
+    duration: CHART_ANIMATION.duration,
+    easing: CHART_ANIMATION.easing,
   },
-  interaction: {
-    intersect: false,
-    mode: 'index' as const,
-  },
+  interaction: { intersect: false, mode: 'index' as const },
   plugins: {
-    datalabels: {
-      display: false
-    },
+    datalabels: { display: false },
     legend: {
       display: true,
       position: 'top' as const,
       labels: {
         usePointStyle: true,
-        padding: 20,
-        font: {
-          size: 13,
-          weight: 'bold' as const,
-          family: 'Inter, sans-serif'
-        },
-        color: 'currentColor',
-        boxWidth: 12,
-        boxHeight: 12
-      }
+        pointStyle: 'circle',
+        padding: 16,
+        font: { size: 13, weight: '600', family: FONT_FAMILY },
+        color: 'hsl(var(--foreground))',
+        boxWidth: 10,
+        boxHeight: 10,
+      },
     },
     tooltip: {
       enabled: true,
       backgroundColor: 'rgba(255, 255, 255, 0.98)',
-      titleColor: '#111827',
-      bodyColor: '#374151',
-      borderColor: '#e5e7eb',
+      titleColor: '#1a1a1a',
+      bodyColor: '#1a1a1a',
+      borderColor: 'rgba(0, 0, 0, 0.12)',
       borderWidth: 1,
       padding: 16,
       cornerRadius: 12,
       displayColors: true,
       boxPadding: 8,
-      titleFont: {
-        size: 14,
-        weight: 'bold' as const,
-        family: 'Inter, sans-serif'
+      titleFont: { size: 14, weight: '600', family: FONT_FAMILY },
+      bodyFont: { size: 13, weight: '500', family: FONT_FAMILY },
+      bodySpacing: 6,
+      titleSpacing: 4,
+      boxWidth: 12,
+      boxHeight: 12,
+      caretSize: 6,
+      caretPadding: 10,
+      callbacks: {
+        label: (ctx: any) => {
+          const v = ctx.parsed?.y ?? ctx.parsed?.x ?? ctx.parsed;
+          const label = ctx.dataset.label ? `${ctx.dataset.label}: ` : '';
+          if (typeof v === 'number' && v >= 1000) return `${label}$${v.toLocaleString()}`;
+          return `${label}${v}`;
+        },
       },
-      bodyFont: {
-        size: 13,
-        weight: 500,
-        family: 'Inter, sans-serif'
-      }
-    }
+    },
   },
   scales: {
     x: {
-      grid: {
-        display: false,
-      },
+      grid: { display: false },
       ticks: {
-        font: {
-          size: 12,
-          family: 'Inter, sans-serif'
-        },
-        padding: 10
-      }
+        font: { size: 12, family: FONT_FAMILY },
+        maxRotation: 45,
+        color: 'hsl(var(--muted-foreground))',
+        padding: 8,
+      },
     },
     y: {
-      grid: {
-        color: getGridColor(),
-        drawBorder: false,
-      },
+      grid: { color: getGridColor(), drawBorder: false },
       ticks: {
-        font: {
-          size: 12,
-          family: 'Inter, sans-serif'
-        },
-        padding: 10
-      }
-    }
-  }
-};
+        font: { size: 12, family: FONT_FAMILY },
+        color: 'hsl(var(--muted-foreground))',
+        padding: 8,
+        callback: (v: any) =>
+          typeof v === 'number' && v >= 1000 ? '$' + (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k' : v,
+      },
+    },
+    ...(opts?.dualAxis
+      ? {
+          y1: {
+            position: 'right' as const,
+            grid: { drawOnChartArea: false },
+            ticks: { font: { size: 12, family: FONT_FAMILY }, color: 'hsl(var(--muted-foreground))' },
+          },
+        }
+      : {}),
+  },
+  ...(opts?.indexAxis === 'y' ? { indexAxis: 'y' as const } : {}),
+});
 
 type TimeFrame = '1month' | '3months' | '6months' | '1year';
 
+function ChartEmpty({ message = 'No data for this period' }: { message?: string }) {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-muted/30 rounded-xl">
+      <p className="text-sm text-muted-foreground font-medium">{message}</p>
+    </div>
+  );
+}
+
   export default function AdminDashboard() {
+    const { user } = useAuth();
+    const isAdmin = user?.role === 'admin';
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -178,6 +186,12 @@ type TimeFrame = '1month' | '3months' | '6months' | '1year';
     const [timeFrame, setTimeFrame] = useState<TimeFrame>('6months');
     const [showTimeFrameDropdown, setShowTimeFrameDropdown] = useState(false);
     const timeFrameDropdownRef = useRef<HTMLDivElement>(null);
+    
+    // Advanced features
+    const [enableZoom, setEnableZoom] = useState(true);
+    const [showForecast, setShowForecast] = useState(false);
+    const [comparisonMode, setComparisonMode] = useState(false);
+    const [fullscreenChart, setFullscreenChart] = useState<string | null>(null);
     
     // Individual graph timeframes
     const [toolsAnalysisTimeFrame] = useState<TimeFrame>('6months');
@@ -208,6 +222,10 @@ type TimeFrame = '1month' | '3months' | '6months' | '1year';
           monthlySpendData: dashboardStats.monthlySpendData || [],
           categoryData: dashboardStats.categoryData || [],
           invoiceStatusData: dashboardStats.invoiceStatusData || [],
+          invoiceStatusByAmount: dashboardStats.invoiceStatusByAmount || [],
+          overdueInvoicesAmount: dashboardStats.overdueInvoicesAmount ?? 0,
+          topVendorsBySpend: dashboardStats.topVendorsBySpend || [],
+          invoiceCategories: dashboardStats.invoiceCategories || [],
           roleDistributionData: dashboardStats.roleDistributionData || [],
           hoursUtilizationData: dashboardStats.hoursUtilizationData || [],
           toolStatusData: dashboardStats.toolStatusData || [],
@@ -250,6 +268,38 @@ type TimeFrame = '1month' | '3months' | '6months' | '1year';
       return data.slice(-monthsMap[tf]);
     };
 
+    // Calculate forecast data (simple linear projection)
+    const calculateForecast = useCallback((data: any[], key: string, periods = 3) => {
+      if (!data || data.length < 2) return [];
+      const recent = data.slice(-3);
+      const avgGrowth = recent.reduce((acc, curr, idx) => {
+        if (idx === 0) return 0;
+        const prev = recent[idx - 1][key] || 0;
+        const currVal = curr[key] || 0;
+        if (prev === 0) return acc;
+        return acc + ((currVal - prev) / prev);
+      }, 0) / (recent.length - 1);
+      
+      const lastValue = recent[recent.length - 1][key] || 0;
+      const forecast = [];
+      for (let i = 1; i <= periods; i++) {
+        forecast.push(lastValue * (1 + avgGrowth * i));
+      }
+      return forecast;
+    }, []);
+
+    // Export chart as image
+    const exportChart = useCallback((chartId: string, chartName: string) => {
+      const canvas = document.getElementById(chartId) as HTMLCanvasElement;
+      if (canvas) {
+        const url = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = `${chartName}-${new Date().toISOString().split('T')[0]}.png`;
+        link.href = url;
+        link.click();
+      }
+    }, []);
+
   const createGradient = (ctx: CanvasRenderingContext2D, color1: string, color2: string) => {
     const gradient = ctx.createLinearGradient(0, 0, 0, 400);
     gradient.addColorStop(0, color1);
@@ -279,12 +329,19 @@ type TimeFrame = '1month' | '3months' | '6months' | '1year';
       {/* Hero Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h1 className="text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl">
-            Dashboard
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl">
+              {isAdmin ? 'Admin Dashboard' : 'Dashboard'}
+            </h1>
+            {isAdmin && (
+              <span className="px-3 py-1 text-xs font-semibold rounded-full bg-primary/15 text-primary border border-primary/30">
+                Admin
+              </span>
+            )}
+          </div>
           <p className="mt-2 text-lg text-muted-foreground flex items-center gap-2">
             <FiActivity className="text-primary animate-pulse" />
-            Live overview of your digital infrastructure
+            {isAdmin ? 'Full overview: finance, tools, people & resources' : 'Live overview of your digital infrastructure'}
             {lastUpdated && (
               <span className="text-xs font-medium px-2 py-1 bg-accent rounded-full ml-2">
                 Last synced: {lastUpdated.toLocaleTimeString()}
@@ -293,7 +350,7 @@ type TimeFrame = '1month' | '3months' | '6months' | '1year';
           </p>
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <Button
             onClick={() => fetchStats(false)}
             disabled={isRefreshing}
@@ -303,6 +360,27 @@ type TimeFrame = '1month' | '3months' | '6months' | '1year';
             <FiRefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             Sync Data
           </Button>
+          
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setEnableZoom(!enableZoom)}
+              variant={enableZoom ? "default" : "outline"}
+              size="sm"
+              className="rounded-xl"
+              title="Toggle zoom/pan (Hold Shift+Drag to pan, Ctrl+Scroll to zoom)"
+            >
+              <FiMaximize2 className="h-4 w-4" />
+            </Button>
+            <Button
+              onClick={() => setShowForecast(!showForecast)}
+              variant={showForecast ? "default" : "outline"}
+              size="sm"
+              className="rounded-xl"
+              title="Show forecast projections"
+            >
+              <FiTrendingUp className="h-4 w-4" />
+            </Button>
+          </div>
           
           <div className="relative" ref={timeFrameDropdownRef}>
             <Button
@@ -353,382 +431,166 @@ type TimeFrame = '1month' | '3months' | '6months' | '1year';
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-          {/* Executive Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <TabsContent value="overview" className="space-y-10 animate-in slide-in-from-bottom-4 duration-500">
+          {/* KPIs */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <SummaryCard 
-              title="Global Tools" 
-              value={stats?.totalTools || 0} 
-              subtitle={`${stats?.activeTools || 0} actively deployed`}
-              icon={<FiTool className="text-white" />}
-              color="from-blue-600 to-indigo-600"
-              growth={toolsGrowth}
-            />
-            <SummaryCard 
-              title="Monthly Burn" 
+              title="Monthly Burn (Tools)" 
               value={`$${(stats?.monthlyToolsSpend || 0).toLocaleString()}`} 
-              subtitle="Current operational spend"
+              subtitle="Recurring tools & subscriptions"
               icon={<FiDollarSign className="text-white" />}
               color="from-emerald-500 to-teal-600"
               growth={spendGrowth}
             />
             <SummaryCard 
-              title="Total Invoices" 
-              value={stats?.totalInvoices || 0} 
-              subtitle="Across all providers"
+              title="Approved to Date" 
+              value={`$${(stats?.totalPaid || 0).toLocaleString()}`} 
+              subtitle="Total approved invoice amount"
               icon={<FiFileText className="text-white" />}
               color="from-orange-500 to-rose-600"
-              growth="+5.2%"
+              growth="—"
             />
             <SummaryCard 
-              title="Headcount" 
-              value={stats?.totalEmployees || 0} 
-              subtitle="Active staff & contractors"
-              icon={<FiUsers className="text-white" />}
+              title="Overdue" 
+              value={`$${(stats?.overdueInvoicesAmount ?? 0).toLocaleString()}`} 
+              subtitle="Approved invoices past due date"
+              icon={<FiClock className="text-white" />}
+              color="from-red-500 to-rose-700"
+              growth="—"
+            />
+            <SummaryCard 
+              title="Invoices" 
+              value={stats?.totalInvoices || 0} 
+              subtitle={`Pending / approved / rejected`}
+              icon={<FiActivity className="text-white" />}
               color="from-purple-500 to-pink-600"
-              growth="+2.1%"
+              growth="—"
             />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Expenditure Trend */}
-            <Card className="lg:col-span-2 rounded-3xl border-border shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader className="flex flex-row items-center justify-between pb-8">
-                <div>
-                  <CardTitle className="text-xl font-bold flex items-center gap-2">
-                    <FiTrendingUp className="text-emerald-500" /> Financial Trajectory
-                  </CardTitle>
-                  <CardDescription>Monthly spend analysis across the organization</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 rounded-full">
-                    <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full" />
-                    <span className="text-xs font-bold text-emerald-600 uppercase tracking-tighter">Expenditure</span>
-                  </div>
-                </div>
+          {/* ——— Invoices & spend ——— */}
+          <section className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2 pb-2 border-b border-border">
+                <FiFileText className="text-orange-500" />
+                Invoices & spend
+              </h2>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-medium">
+                  Approved: ${(stats?.totalPaid || 0).toLocaleString()}
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-700 dark:text-red-400 font-medium">
+                  Overdue: ${(stats?.overdueInvoicesAmount ?? 0).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card className="lg:col-span-2 rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Monthly invoice spend</CardTitle>
+                <CardDescription>Approved invoice amount by month</CardDescription>
               </CardHeader>
-              <CardContent className="h-[400px]">
+              <CardContent className="h-[360px] relative">
                 <Line
+                  id="financial-trajectory-chart"
                   data={{
                     labels: filterDataByTimeFrame(stats?.monthlySpendData || [], timeFrame).map(d => d.month),
                     datasets: [{
-                      label: 'Spend',
+                      label: 'Spend ($)',
                       data: filterDataByTimeFrame(stats?.monthlySpendData || [], timeFrame).map(d => d.spend),
-                      borderColor: '#10B981',
-                      borderWidth: 4,
-                      pointBackgroundColor: '#10B981',
-                      pointBorderWidth: 2,
-                      pointBorderColor: '#fff',
-                      pointRadius: 6,
-                      pointHoverRadius: 8,
-                      fill: true,
-                      backgroundColor: (context) => {
-                        const ctx = context.chart.ctx;
-                        const gradient = ctx.createLinearGradient(0, 0, 0, 350);
-                        gradient.addColorStop(0, 'rgba(16, 185, 129, 0.2)');
-                        gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
+                      borderColor: '#059669',
+                      backgroundColor: (ctx: any) => {
+                        const chart = ctx.chart;
+                        const { ctx: context } = chart;
+                        const gradient = context.createLinearGradient(0, 0, 0, 350);
+                        gradient.addColorStop(0, 'rgba(5, 150, 105, 0.25)');
+                        gradient.addColorStop(1, 'rgba(5, 150, 105, 0)');
                         return gradient;
                       },
-                      tension: 0.4
+                      fill: true,
+                      tension: 0.35,
+                      pointRadius: 0,
+                      pointHoverRadius: 2,
+                      borderWidth: 2.5
                     }]
                   }}
-                  options={{
-                    ...chartOptions,
-                    plugins: {
-                      ...chartOptions.plugins,
-                      legend: { display: false }
-                    }
-                  }}
+                  options={getCleanChartOptions()}
                 />
               </CardContent>
             </Card>
-
-              {/* Stack Composition */}
-              <Card className="rounded-3xl border-border shadow-xl hover:shadow-2xl transition-shadow duration-300">
-                <CardHeader>
-                  <CardTitle className="text-xl font-bold flex items-center gap-2">
-                    <FiPieChart className="text-primary" /> Stack Composition
-                  </CardTitle>
-                  <CardDescription>Tool distribution by category</CardDescription>
-                </CardHeader>
-                <CardContent className="h-[400px]">
-                  <Pie
-                    data={{
-                      labels: stats?.categoryData.map(d => d.name),
-                      datasets: [{
-                        data: stats?.categoryData.map(d => d.value),
-                        backgroundColor: CHART_COLORS,
-                        borderWidth: 0,
-                        hoverOffset: 15
-                      }]
-                    }}
-                    options={{
-                      ...chartOptions,
-                      plugins: {
-                        ...chartOptions.plugins,
-                        legend: { position: 'bottom', labels: { padding: 25, usePointStyle: true } }
-                      }
-                    }}
-                  />
-                </CardContent>
-              </Card>
-          </div>
-
-          {/* Additional Graphs Row 1 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Invoice Status Distribution */}
-            <Card className="rounded-3xl border-border shadow-xl hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold flex items-center gap-2">
-                  <FiFileText className="text-orange-500" /> Invoice Status
-                </CardTitle>
-                <CardDescription>Distribution of invoice statuses</CardDescription>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Status by amount</CardTitle>
+                <CardDescription>Total $ by status</CardDescription>
               </CardHeader>
-              <CardContent className="h-[350px]">
+              <CardContent className="h-[360px]">
                 <Doughnut
                   data={{
-                    labels: stats?.invoiceStatusData?.map(d => d.name) || [],
+                    labels: stats?.invoiceStatusByAmount?.map(d => d.name) || [],
                     datasets: [{
-                      data: stats?.invoiceStatusData?.map(d => d.value) || [],
-                      backgroundColor: ['#10B981', '#F59E0B', '#EF4444', '#6B7280'],
-                      borderWidth: 0,
-                      cutout: '60%'
+                      data: stats?.invoiceStatusByAmount?.map(d => d.value) || [],
+                      backgroundColor: ['#F59E0B', '#10B981', '#EF4444', '#6B7280'],
+                      borderWidth: 2,
+                      borderColor: 'hsl(var(--card))',
+                      hoverOffset: 12
                     }]
                   }}
                   options={{
-                    ...chartOptions,
+                    ...getCleanChartOptions(),
                     plugins: {
-                      ...chartOptions.plugins,
-                      legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true } }
-                    }
-                  }}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Billing Period Distribution */}
-            <Card className="rounded-3xl border-border shadow-xl hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold flex items-center gap-2">
-                  <FiClock className="text-purple-500" /> Billing Cycles
-                </CardTitle>
-                <CardDescription>Monthly vs Yearly billing distribution</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[350px]">
-                <Pie
-                  data={{
-                    labels: stats?.billingPeriodData?.map(d => d.name) || [],
-                    datasets: [{
-                      data: stats?.billingPeriodData?.map(d => d.value) || [],
-                      backgroundColor: ['#3B82F6', '#8B5CF6'],
-                      borderWidth: 0,
-                      hoverOffset: 15
-                    }]
-                  }}
-                  options={{
-                    ...chartOptions,
-                    plugins: {
-                      ...chartOptions.plugins,
-                      legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true } }
+                      ...getCleanChartOptions().plugins,
+                      legend: { position: 'bottom' },
+                      tooltip: {
+                        ...getCleanChartOptions().plugins?.tooltip,
+                        callbacks: {
+                          label: (ctx: any) => {
+                            const v = ctx.parsed;
+                            const total = (ctx.dataset.data as number[]).reduce((a: number, b: number) => a + b, 0);
+                            const pct = total ? ((v / total) * 100).toFixed(1) : '0';
+                            return ` ${ctx.label}: $${Number(v).toLocaleString()} (${pct}%)`;
+                          }
+                        }
+                      }
                     }
                   }}
                 />
               </CardContent>
             </Card>
           </div>
-
-          {/* Combined Spend Analysis */}
-          <Card className="rounded-3xl border-border shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300">
-            <CardHeader className="flex flex-row items-center justify-between pb-8">
-              <div>
-                <CardTitle className="text-xl font-bold flex items-center gap-2">
-                  <FiTrendingUp className="text-blue-500" /> Total Spend Analysis
-                </CardTitle>
-                <CardDescription>Combined tools and payroll expenditure over time</CardDescription>
-              </div>
-              <div className="flex gap-2">
-                <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 rounded-full">
-                  <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full" />
-                  <span className="text-xs font-bold text-emerald-600 uppercase tracking-tighter">Tools</span>
-                </div>
-                <div className="flex items-center gap-1.5 px-3 py-1 bg-purple-500/10 rounded-full">
-                  <div className="w-2.5 h-2.5 bg-purple-500 rounded-full" />
-                  <span className="text-xs font-bold text-purple-600 uppercase tracking-tighter">Payroll</span>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="h-[400px]">
-              <Line
-                data={{
-                  labels: filterDataByTimeFrame(stats?.monthlySpendData || [], timeFrame).map(d => d.month),
-                  datasets: [
-                    {
-                      label: 'Tools Spend',
-                      data: filterDataByTimeFrame(stats?.monthlySpendData || [], timeFrame).map(d => d.spend),
-                      borderColor: '#10B981',
-                      backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                      borderWidth: 3,
-                      pointRadius: 5,
-                      pointHoverRadius: 7,
-                      fill: true,
-                      tension: 0.4
-                    },
-                    {
-                      label: 'Payroll',
-                      data: filterDataByTimeFrame(stats?.employeeSpendingByMonth || [], timeFrame).map(d => d.amount),
-                      borderColor: '#8B5CF6',
-                      backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                      borderWidth: 3,
-                      pointRadius: 5,
-                      pointHoverRadius: 7,
-                      fill: true,
-                      tension: 0.4
-                    }
-                  ]
-                }}
-                options={chartOptions}
-              />
-            </CardContent>
-          </Card>
-
-          {/* Additional Graphs Row 2 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Spend by Organization */}
-            <Card className="rounded-3xl border-border shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold flex items-center gap-2">
-                  <FiUsers className="text-indigo-500" /> Spend by Organization
-                </CardTitle>
-                <CardDescription>Top organizations by expenditure</CardDescription>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Top vendors by spend</CardTitle>
+                <CardDescription>By provider (approved invoices)</CardDescription>
               </CardHeader>
-              <CardContent className="h-[400px]">
+              <CardContent className="h-[340px]">
                 <Bar
                   data={{
-                    labels: stats?.spendByOrganization?.slice(0, 8).map(d => d.name) || [],
+                    labels: stats?.topVendorsBySpend?.slice(0, 10).map(d => d.name) || [],
                     datasets: [{
                       label: 'Spend ($)',
-                      data: stats?.spendByOrganization?.slice(0, 8).map(d => d.value) || [],
-                      backgroundColor: '#6366F1',
+                      data: stats?.topVendorsBySpend?.slice(0, 10).map(d => d.value) || [],
+                      backgroundColor: 'rgba(99, 102, 241, 0.85)',
                       borderRadius: 8,
-                      maxBarThickness: 50
+                      maxBarThickness: 36
                     }]
                   }}
-                  options={{
-                    ...chartOptions,
-                    indexAxis: 'y',
-                    plugins: {
-                      ...chartOptions.plugins,
-                      legend: { display: false }
-                    }
-                  }}
+                  options={getCleanChartOptions({ indexAxis: 'y' })}
                 />
               </CardContent>
             </Card>
-
-            {/* Hours Utilization */}
-            <Card className="rounded-3xl border-border shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader className="flex flex-row items-center justify-between pb-8">
-                <div>
-                  <CardTitle className="text-xl font-bold flex items-center gap-2">
-                    <FiActivity className="text-teal-500" /> Hours Utilization
-                  </CardTitle>
-                  <CardDescription>Contract vs Fulfilled hours</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-500/10 rounded-full">
-                    <div className="w-2.5 h-2.5 bg-blue-500 rounded-full" />
-                    <span className="text-xs font-bold text-blue-600 uppercase tracking-tighter">Contract</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 px-3 py-1 bg-teal-500/10 rounded-full">
-                    <div className="w-2.5 h-2.5 bg-teal-500 rounded-full" />
-                    <span className="text-xs font-bold text-teal-600 uppercase tracking-tighter">Fulfilled</span>
-                  </div>
-                </div>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Invoice count vs amount by month</CardTitle>
+                <CardDescription>Volume and total $</CardDescription>
               </CardHeader>
-              <CardContent className="h-[400px]">
-                <Bar
-                  data={{
-                    labels: filterDataByTimeFrame(stats?.hoursUtilizationData || [], timeFrame).map(d => d.month),
-                    datasets: [
-                      {
-                        label: 'Contract Hours',
-                        data: filterDataByTimeFrame(stats?.hoursUtilizationData || [], timeFrame).map(d => d.contractHours),
-                        backgroundColor: '#3B82F6',
-                        borderRadius: 8
-                      },
-                      {
-                        label: 'Fulfilled Hours',
-                        data: filterDataByTimeFrame(stats?.hoursUtilizationData || [], timeFrame).map(d => d.fulfilledHours),
-                        backgroundColor: '#14B8A6',
-                        borderRadius: 8
-                      }
-                    ]
-                  }}
-                  options={chartOptions}
-                />
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Role Distribution & Invoice Trends */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Role Distribution */}
-            <Card className="rounded-3xl border-border shadow-xl hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold flex items-center gap-2">
-                  <FiUsers className="text-pink-500" /> Spend by Role
-                </CardTitle>
-                <CardDescription>Payroll distribution across roles</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[350px]">
-                <Doughnut
-                  data={{
-                    labels: stats?.roleDistributionData?.map(d => d.name) || [],
-                    datasets: [{
-                      data: stats?.roleDistributionData?.map(d => d.value) || [],
-                      backgroundColor: CHART_COLORS,
-                      borderWidth: 0,
-                      cutout: '60%'
-                    }]
-                  }}
-                  options={{
-                    ...chartOptions,
-                    plugins: {
-                      ...chartOptions.plugins,
-                      legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true } }
-                    }
-                  }}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Invoice Volume vs Amount */}
-            <Card className="rounded-3xl border-border shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader className="flex flex-row items-center justify-between pb-8">
-                <div>
-                  <CardTitle className="text-xl font-bold flex items-center gap-2">
-                    <FiBarChart className="text-amber-500" /> Invoice Trends
-                  </CardTitle>
-                  <CardDescription>Invoice count vs total amount</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 rounded-full">
-                    <div className="w-2.5 h-2.5 bg-amber-500 rounded-full" />
-                    <span className="text-xs font-bold text-amber-600 uppercase tracking-tighter">Count</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 px-3 py-1 bg-orange-500/10 rounded-full">
-                    <div className="w-2.5 h-2.5 bg-orange-500 rounded-full" />
-                    <span className="text-xs font-bold text-orange-600 uppercase tracking-tighter">Amount</span>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="h-[350px]">
+              <CardContent className="h-[340px]">
                 <Bar
                   data={{
                     labels: filterDataByTimeFrame(stats?.monthlyInvoiceTrends || [], timeFrame).map(d => d.month),
                     datasets: [
                       {
-                        label: 'Invoices',
+                        label: 'Count',
                         data: filterDataByTimeFrame(stats?.monthlyInvoiceTrends || [], timeFrame).map(d => d.invoices),
                         backgroundColor: '#F59E0B',
                         borderRadius: 8,
@@ -737,28 +599,297 @@ type TimeFrame = '1month' | '3months' | '6months' | '1year';
                       {
                         label: 'Amount ($)',
                         data: filterDataByTimeFrame(stats?.monthlyInvoiceTrends || [], timeFrame).map(d => d.amount),
-                        backgroundColor: '#F97316',
+                        backgroundColor: '#EA580C',
                         borderRadius: 8,
                         yAxisID: 'y1'
                       }
                     ]
                   }}
                   options={{
-                    ...chartOptions,
+                    ...getCleanChartOptions({ dualAxis: true }),
                     scales: {
-                      ...chartOptions.scales,
-                      y: {
-                        type: 'linear',
-                        display: true,
-                        position: 'left',
-                        title: { display: true, text: 'Invoice Count' }
+                      ...getCleanChartOptions().scales,
+                      y: { position: 'left', title: { display: true, text: 'Count' } },
+                      y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Amount ($)' } }
+                    }
+                  }}
+                />
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Invoice count by status</CardTitle>
+                <CardDescription>Pending / approved / rejected (count)</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[300px]">
+                <Doughnut
+                  data={{
+                    labels: stats?.invoiceStatusData?.map(d => d.name) || [],
+                    datasets: [{
+                      data: stats?.invoiceStatusData?.map(d => d.value) || [],
+                      backgroundColor: ['#F59E0B', '#10B981', '#EF4444', '#6B7280'],
+                      borderWidth: 2,
+                      borderColor: 'hsl(var(--card))',
+                      hoverOffset: 10
+                    }]
+                  }}
+                  options={{ ...getCleanChartOptions(), plugins: { ...getCleanChartOptions().plugins, legend: { position: 'bottom' } } }}
+                />
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Spend by invoice category</CardTitle>
+                <CardDescription>Approved invoices by category</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[300px]">
+                <Bar
+                  data={{
+                    labels: stats?.invoiceCategories?.slice(0, 8).map(d => d.name) || [],
+                    datasets: [{
+                      label: 'Spend ($)',
+                      data: stats?.invoiceCategories?.slice(0, 8).map(d => d.value) || [],
+                      backgroundColor: 'rgba(234, 88, 12, 0.9)',
+                      borderRadius: 8,
+                      maxBarThickness: 36
+                    }]
+                  }}
+                  options={getCleanChartOptions()}
+                />
+              </CardContent>
+            </Card>
+          </div>
+          </section>
+
+          {/* ——— Submissions & users ——— */}
+          <section className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2 pb-2 border-b border-border">
+                <FiActivity className="text-amber-500" />
+                Submissions & users
+              </h2>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span className="px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-400 font-medium">
+                  Pending: {stats?.pendingSubmissions ?? 0}
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-medium">
+                  Approved: {stats?.approvedSubmissions ?? 0}
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-slate-500/10 text-slate-700 dark:text-slate-400 font-medium">
+                  Users: {stats?.totalUsers ?? 0}
+                </span>
+              </div>
+            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Submissions pipeline</CardTitle>
+                <CardDescription>Pending vs approved</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[300px]">
+                <Doughnut
+                  data={{
+                    labels: ['Pending', 'Approved'],
+                    datasets: [{
+                      data: [stats?.pendingSubmissions ?? 0, stats?.approvedSubmissions ?? 0],
+                      backgroundColor: ['#F59E0B', '#10B981'],
+                      borderWidth: 2,
+                      borderColor: 'hsl(var(--card))',
+                      hoverOffset: 10
+                    }]
+                  }}
+                  options={{ ...getCleanChartOptions(), plugins: { ...getCleanChartOptions().plugins, legend: { position: 'bottom' } } }}
+                />
+              </CardContent>
+            </Card>
+            <SummaryCard 
+              title="Total users" 
+              value={stats?.totalUsers ?? 0} 
+              subtitle="Registered users"
+              icon={<FiUsers className="text-white" />}
+              color="from-slate-600 to-slate-700"
+              growth="—"
+            />
+          </div>
+          </section>
+
+          {/* ——— Credentials (Tools) ——— */}
+          <section className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2 pb-2 border-b border-border">
+                <FiTool className="text-blue-500" />
+                Credentials (Tools)
+              </h2>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span className="px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-400 font-medium">
+                  Total: {stats?.totalTools ?? 0} ({stats?.activeTools ?? 0} active)
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-medium">
+                  Monthly burn: ${(stats?.monthlyToolsSpend || 0).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Tools added over time</CardTitle>
+                <CardDescription>New credentials per month</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[320px]">
+                <Line
+                  data={{
+                    labels: filterDataByTimeFrame(stats?.monthlyToolsData || [], timeFrame).map(d => d.month),
+                    datasets: [{
+                      label: 'Tools added',
+                      data: filterDataByTimeFrame(stats?.monthlyToolsData || [], timeFrame).map(d => d.tools),
+                      borderColor: '#2563EB',
+                      backgroundColor: (ctx: any) => {
+                        const chart = ctx.chart;
+                        const { ctx: context } = chart;
+                        const gradient = context.createLinearGradient(0, 0, 0, 300);
+                        gradient.addColorStop(0, 'rgba(37, 99, 235, 0.2)');
+                        gradient.addColorStop(1, 'rgba(37, 99, 235, 0)');
+                        return gradient;
                       },
-                      y1: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        title: { display: true, text: 'Amount ($)' },
-                        grid: { drawOnChartArea: false }
+                      fill: true,
+                      tension: 0.35,
+                      pointRadius: 0,
+                      pointHoverRadius: 2,
+                      borderWidth: 2.5
+                    }]
+                  }}
+                  options={getCleanChartOptions()}
+                />
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Tools by category</CardTitle>
+                <CardDescription>Distribution by category</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[320px]">
+                <Bar
+                  data={{
+                    labels: stats?.categoryData?.slice(0, 10).map(d => d.name) || [],
+                    datasets: [{
+                      label: 'Tools',
+                      data: stats?.categoryData?.slice(0, 10).map(d => d.value) || [],
+                      backgroundColor: 'rgba(59, 130, 246, 0.9)',
+                      borderRadius: 8,
+                      maxBarThickness: 40
+                    }]
+                  }}
+                  options={getCleanChartOptions()}
+                />
+              </CardContent>
+            </Card>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Top tools by monthly spend</CardTitle>
+                <CardDescription>Paid tools</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[320px]">
+                <Bar
+                  data={{
+                    labels: stats?.topToolsData?.slice(0, 8).map(d => d.name) || [],
+                    datasets: [{
+                      label: 'Spend ($)',
+                      data: stats?.topToolsData?.slice(0, 8).map(d => d.monthlySpend) || [],
+                      backgroundColor: 'rgba(16, 185, 129, 0.9)',
+                      borderRadius: 8,
+                      maxBarThickness: 40
+                    }]
+                  }}
+                  options={getCleanChartOptions({ indexAxis: 'y' })}
+                />
+              </CardContent>
+            </Card>
+          </div>
+          </section>
+
+          {/* ——— People & payroll ——— */}
+          <section className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2 pb-2 border-b border-border">
+                <FiUsers className="text-violet-500" />
+                People & payroll
+              </h2>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span className="px-3 py-1.5 rounded-lg bg-violet-500/10 text-violet-700 dark:text-violet-400 font-medium">
+                  Headcount: {stats?.totalEmployees ?? 0}
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-purple-500/10 text-purple-700 dark:text-purple-400 font-medium">
+                  Total payroll (period): ${(stats?.totalPayments || 0).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Payroll over time</CardTitle>
+                <CardDescription>Monthly payroll (contractor invoices)</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[340px]">
+                <Line
+                  data={{
+                    labels: filterDataByTimeFrame(stats?.employeeSpendingByMonth || [], timeFrame).map(d => d.month),
+                    datasets: [{
+                      label: 'Payroll ($)',
+                      data: filterDataByTimeFrame(stats?.employeeSpendingByMonth || [], timeFrame).map(d => d.amount),
+                      borderColor: '#7C3AED',
+                      backgroundColor: (ctx: any) => {
+                        const chart = ctx.chart;
+                        const { ctx: context } = chart;
+                        const gradient = context.createLinearGradient(0, 0, 0, 320);
+                        gradient.addColorStop(0, 'rgba(124, 58, 237, 0.22)');
+                        gradient.addColorStop(1, 'rgba(124, 58, 237, 0)');
+                        return gradient;
+                      },
+                      fill: true,
+                      tension: 0.35,
+                      pointRadius: 0,
+                      pointHoverRadius: 2,
+                      borderWidth: 2.5
+                    }]
+                  }}
+                  options={getCleanChartOptions()}
+                />
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Spend by role</CardTitle>
+                <CardDescription>Payroll by role (contractor invoices)</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[340px]">
+                <Doughnut
+                  data={{
+                    labels: stats?.roleDistributionData?.map(d => d.name) || [],
+                    datasets: [{
+                      data: stats?.roleDistributionData?.map(d => d.value) || [],
+                      backgroundColor: CHART_COLORS,
+                      borderWidth: 2,
+                      borderColor: 'hsl(var(--card))',
+                      hoverOffset: 12
+                    }]
+                  }}
+                  options={{
+                    ...getCleanChartOptions(),
+                    plugins: {
+                      ...getCleanChartOptions().plugins,
+                      legend: { position: 'bottom' },
+                      tooltip: {
+                        ...getCleanChartOptions().plugins?.tooltip,
+                        callbacks: {
+                          label: (ctx: any) => {
+                            const v = ctx.parsed;
+                            const total = (ctx.dataset.data as number[]).reduce((a: number, b: number) => a + b, 0);
+                            const pct = total ? ((v / total) * 100).toFixed(1) : '0';
+                            return ` ${ctx.label}: $${Number(v).toLocaleString()} (${pct}%)`;
+                          }
+                        }
                       }
                     }
                   }}
@@ -766,449 +897,761 @@ type TimeFrame = '1month' | '3months' | '6months' | '1year';
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
+          </section>
 
-        <TabsContent value="tools" className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-             <Card className="rounded-3xl border-border shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-xl font-bold">Growth Intelligence</CardTitle>
-                  <CardDescription>Velocity of new tool adoption</CardDescription>
-                </div>
+          {/* ——— Combined & by organization ——— */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-semibold text-foreground flex items-center gap-2 pb-2 border-b border-border">
+              <FiTrendingUp className="text-emerald-500" />
+              Combined spend & by organization
+            </h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Tools + payroll over time</CardTitle>
+                <CardDescription>Combined invoice spend and payroll</CardDescription>
               </CardHeader>
-              <CardContent className="h-[400px]">
-                <Bar
+              <CardContent className="h-[320px]">
+                <Line
                   data={{
-                    labels: filterDataByTimeFrame(stats?.monthlyToolsData || [], toolsAnalysisTimeFrame).map(d => d.month),
-                    datasets: [{
-                      label: 'Tools Added',
-                      data: filterDataByTimeFrame(stats?.monthlyToolsData || [], toolsAnalysisTimeFrame).map(d => d.tools),
-                      backgroundColor: '#3B82F6',
-                      borderRadius: 12,
-                      maxBarThickness: 45
-                    }]
+                    labels: filterDataByTimeFrame(stats?.monthlySpendData || [], timeFrame).map(d => d.month),
+                    datasets: [
+                      {
+                        label: 'Tools (invoices)',
+                        data: filterDataByTimeFrame(stats?.monthlySpendData || [], timeFrame).map(d => d.spend),
+                        borderColor: '#10B981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 2,
+                        fill: true,
+                        tension: 0.3
+                      },
+                      {
+                        label: 'Payroll',
+                        data: filterDataByTimeFrame(stats?.employeeSpendingByMonth || [], timeFrame).map(d => d.amount),
+                        borderColor: '#8B5CF6',
+                        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 2,
+                        fill: true,
+                        tension: 0.3
+                      }
+                    ]
                   }}
-                  options={chartOptions}
+                  options={getCleanChartOptions()}
                 />
               </CardContent>
             </Card>
-
-            <Card className="rounded-3xl border-border shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold">Top Investments</CardTitle>
-                <CardDescription>Tools by monthly resource allocation</CardDescription>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Spend by organization</CardTitle>
+                <CardDescription>Top orgs by approved invoice spend</CardDescription>
               </CardHeader>
-              <CardContent className="h-[400px]">
+              <CardContent className="h-[320px]">
                 <Bar
                   data={{
-                    labels: stats?.topToolsData?.slice(0, 6).map(d => d.name),
+                    labels: stats?.spendByOrganization?.slice(0, 8).map(d => d.name) || [],
                     datasets: [{
                       label: 'Spend ($)',
-                      data: stats?.topToolsData?.slice(0, 6).map(d => d.monthlySpend),
-                      backgroundColor: CHART_COLORS[1],
-                      borderRadius: 12,
+                      data: stats?.spendByOrganization?.slice(0, 8).map(d => d.value) || [],
+                      backgroundColor: '#6366F1',
+                      borderRadius: 6,
+                      maxBarThickness: 40
                     }]
                   }}
-                  options={{
-                    ...chartOptions,
-                    indexAxis: 'y'
-                  }}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Tool Health Distribution */}
-            <Card className="rounded-3xl border-border shadow-xl hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold flex items-center gap-2">
-                  <FiHeart className="text-rose-500" /> Tool Health
-                </CardTitle>
-                <CardDescription>Active vs Inactive tool deployment</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[400px]">
-                <Doughnut
-                  data={{
-                    labels: stats?.toolStatusData.map(d => d.name),
-                    datasets: [{
-                      data: stats?.toolStatusData.map(d => d.value),
-                      backgroundColor: [CHART_COLORS[1], CHART_COLORS[3], CHART_COLORS[4]],
-                      borderWidth: 0,
-                      cutout: '70%'
-                    }]
-                  }}
-                  options={{
-                    ...chartOptions,
-                    plugins: {
-                      ...chartOptions.plugins,
-                      legend: { position: 'bottom', labels: { padding: 25, usePointStyle: true } }
-                    }
-                  }}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Billing Period Distribution */}
-            <Card className="rounded-3xl border-border shadow-xl hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold flex items-center gap-2">
-                  <FiRefreshCw className="text-blue-500" /> Billing Cycles
-                </CardTitle>
-                <CardDescription>Tool distribution by payment frequency</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[400px]">
-                <Pie
-                  data={{
-                    labels: stats?.billingPeriodData.map(d => d.name),
-                    datasets: [{
-                      data: stats?.billingPeriodData.map(d => d.value),
-                      backgroundColor: [CHART_COLORS[0], CHART_COLORS[2], CHART_COLORS[5]],
-                      borderWidth: 0,
-                      hoverOffset: 15
-                    }]
-                  }}
-                  options={{
-                    ...chartOptions,
-                    plugins: {
-                      ...chartOptions.plugins,
-                      legend: { position: 'bottom', labels: { padding: 25, usePointStyle: true } }
-                    }
-                  }}
+                  options={getCleanChartOptions({ indexAxis: 'y' })}
                 />
               </CardContent>
             </Card>
           </div>
+          </section>
+
         </TabsContent>
 
-        <TabsContent value="invoices" className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <Card className="rounded-3xl border-border shadow-xl hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold">Approval Flow</CardTitle>
-                <CardDescription>Current state of invoice pipeline</CardDescription>
+        <TabsContent value="tools" className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+          <section className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2 pb-2 border-b border-border">
+                <FiTool className="text-blue-500" />
+                Credentials (Tools)
+              </h2>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span className="px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-400 font-medium">
+                  Total: {stats?.totalTools ?? 0} ({stats?.activeTools ?? 0} active)
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-medium">
+                  Monthly burn: ${(stats?.monthlyToolsSpend || 0).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Tools added over time</CardTitle>
+                <CardDescription>New credentials per month</CardDescription>
               </CardHeader>
-              <CardContent className="h-[400px]">
-                <Pie
+              <CardContent className="h-[340px]">
+                <Line
                   data={{
-                    labels: stats?.invoiceStatusData?.map(d => d.name),
+                    labels: filterDataByTimeFrame(stats?.monthlyToolsData || [], timeFrame).map(d => d.month),
                     datasets: [{
-                      data: stats?.invoiceStatusData?.map(d => d.value),
-                      backgroundColor: [CHART_COLORS[1], CHART_COLORS[4], CHART_COLORS[3]],
-                      borderWidth: 0,
+                      label: 'Tools added',
+                      data: filterDataByTimeFrame(stats?.monthlyToolsData || [], timeFrame).map(d => d.tools),
+                      borderColor: '#2563EB',
+                      backgroundColor: 'rgba(37, 99, 235, 0.12)',
+                      fill: true,
+                      tension: 0.35,
+                      pointRadius: 0,
+                      pointHoverRadius: 2,
+                      borderWidth: 2.5
                     }]
                   }}
-                  options={{
-                    ...chartOptions,
-                    plugins: {
-                      ...chartOptions.plugins,
-                      legend: { position: 'bottom', labels: { padding: 25, usePointStyle: true } }
-                    }
-                  }}
+                  options={getCleanChartOptions()}
                 />
               </CardContent>
             </Card>
-
-            <Card className="rounded-3xl border-border shadow-xl hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold">Organization Spend</CardTitle>
-                <CardDescription>Expenditure distribution across entities</CardDescription>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Top tools by monthly spend</CardTitle>
+                <CardDescription>Paid tools</CardDescription>
               </CardHeader>
-              <CardContent className="h-[400px]">
-                <Doughnut
-                  data={{
-                    labels: stats?.spendByOrganization?.map(d => d.name),
-                    datasets: [{
-                      data: stats?.spendByOrganization?.map(d => d.value),
-                      backgroundColor: CHART_COLORS,
-                      borderWidth: 0,
-                      cutout: '70%'
-                    }]
-                  }}
-                  options={{
-                    ...chartOptions,
-                    plugins: {
-                      ...chartOptions.plugins,
-                      legend: { position: 'bottom', labels: { padding: 25, usePointStyle: true } }
-                    }
-                  }}
-                />
-              </CardContent>
-            </Card>
-
-            <Card className="lg:col-span-2 rounded-3xl border-border shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold">Volume Analysis</CardTitle>
-                <CardDescription>Invoices processed vs total amount</CardDescription>
-              </CardHeader>
-              <CardContent className="h-[400px]">
+              <CardContent className="h-[340px]">
                 <Bar
                   data={{
-                    labels: stats?.monthlyInvoiceTrends?.slice(-6).map(d => d.month),
+                    labels: stats?.topToolsData?.slice(0, 8).map(d => d.name) || [],
                     datasets: [{
-                      label: 'Invoices',
-                      data: stats?.monthlyInvoiceTrends?.slice(-6).map(d => d.invoices),
-                      backgroundColor: '#F59E0B',
-                      borderRadius: 8
+                      label: 'Spend ($)',
+                      data: stats?.topToolsData?.slice(0, 8).map(d => d.monthlySpend) || [],
+                      backgroundColor: 'rgba(16, 185, 129, 0.9)',
+                      borderRadius: 8,
+                      maxBarThickness: 40
                     }]
                   }}
-                  options={chartOptions}
+                  options={getCleanChartOptions({ indexAxis: 'y' })}
+                />
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <FiHeart className="text-rose-500" /> Tool status
+                </CardTitle>
+                <CardDescription>Active vs inactive</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[320px]">
+                <Doughnut
+                  data={{
+                    labels: stats?.toolStatusData?.map(d => d.name) || [],
+                    datasets: [{
+                      data: stats?.toolStatusData?.map(d => d.value) || [],
+                      backgroundColor: ['#10B981', '#6B7280', '#F59E0B'],
+                      borderWidth: 2,
+                      borderColor: 'hsl(var(--card))',
+                      hoverOffset: 10
+                    }]
+                  }}
+                  options={{ ...getCleanChartOptions(), plugins: { ...getCleanChartOptions().plugins, legend: { position: 'bottom' } } }}
+                />
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <FiRefreshCw className="text-blue-500" /> Billing cycle
+                </CardTitle>
+                <CardDescription>Monthly vs yearly (paid tools)</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[320px]">
+                <Pie
+                  data={{
+                    labels: stats?.billingPeriodData?.map(d => d.name) || [],
+                    datasets: [{
+                      data: stats?.billingPeriodData?.map(d => d.value) || [],
+                      backgroundColor: ['#3B82F6', '#8B5CF6'],
+                      borderWidth: 2,
+                      borderColor: 'hsl(var(--card))',
+                      hoverOffset: 10
+                    }]
+                  }}
+                  options={{ ...getCleanChartOptions(), plugins: { ...getCleanChartOptions().plugins, legend: { position: 'bottom' } } }}
                 />
               </CardContent>
             </Card>
           </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Tools by category</CardTitle>
+                <CardDescription>Distribution by category</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[320px]">
+                <Bar
+                  data={{
+                    labels: stats?.categoryData?.slice(0, 10).map(d => d.name) || [],
+                    datasets: [{
+                      label: 'Tools',
+                      data: stats?.categoryData?.slice(0, 10).map(d => d.value) || [],
+                      backgroundColor: 'rgba(59, 130, 246, 0.9)',
+                      borderRadius: 8,
+                      maxBarThickness: 40
+                    }]
+                  }}
+                  options={getCleanChartOptions()}
+                />
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Paid tools by monthly spend</CardTitle>
+                <CardDescription>Top 10 paid tools (horizontal)</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[320px]">
+                <Bar
+                  data={{
+                    labels: stats?.topToolsData?.slice(0, 10).map(d => d.name) || [],
+                    datasets: [{
+                      label: 'Monthly spend ($)',
+                      data: stats?.topToolsData?.slice(0, 10).map(d => d.monthlySpend) || [],
+                      backgroundColor: 'rgba(16, 185, 129, 0.9)',
+                      borderRadius: 8,
+                      maxBarThickness: 36
+                    }]
+                  }}
+                  options={getCleanChartOptions({ indexAxis: 'y' })}
+                />
+              </CardContent>
+            </Card>
+          </div>
+          </section>
         </TabsContent>
 
-        <TabsContent value="assets" className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <Card className="rounded-3xl border-border shadow-xl hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold flex items-center gap-2">
-                  <FiFolder className="text-blue-500" /> Asset Distribution
-                </CardTitle>
-                <CardDescription>Company assets categorized by type</CardDescription>
+        <TabsContent value="invoices" className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+          <section className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2 pb-2 border-b border-border">
+                <FiFileText className="text-orange-500" />
+                Invoices & spend
+              </h2>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-medium">
+                  Approved: ${(stats?.totalPaid || 0).toLocaleString()}
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-700 dark:text-red-400 font-medium">
+                  Overdue: ${(stats?.overdueInvoicesAmount ?? 0).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Status by amount</CardTitle>
+                <CardDescription>Total $ by status</CardDescription>
               </CardHeader>
-              <CardContent className="h-[400px]">
-                <Pie
+              <CardContent className="h-[340px]">
+                <Doughnut
                   data={{
-                    labels: stats?.assetsByType?.map(d => d.name),
+                    labels: stats?.invoiceStatusByAmount?.map(d => d.name) || [],
                     datasets: [{
-                      data: stats?.assetsByType?.map(d => d.value),
-                      backgroundColor: [CHART_COLORS[0], CHART_COLORS[1], CHART_COLORS[2]],
-                      borderWidth: 0,
+                      data: stats?.invoiceStatusByAmount?.map(d => d.value) || [],
+                      backgroundColor: ['#F59E0B', '#10B981', '#EF4444', '#6B7280'],
+                      borderWidth: 2,
+                      borderColor: 'hsl(var(--card))',
+                      hoverOffset: 10
                     }]
                   }}
                   options={{
-                    ...chartOptions,
+                    ...getCleanChartOptions(),
                     plugins: {
-                      ...chartOptions.plugins,
-                      legend: { position: 'bottom', labels: { padding: 25, usePointStyle: true } }
+                      ...getCleanChartOptions().plugins,
+                      legend: { position: 'bottom' },
+                      tooltip: {
+                        ...getCleanChartOptions().plugins?.tooltip,
+                        callbacks: {
+                          label: (ctx: any) => {
+                            const v = ctx.parsed;
+                            const total = (ctx.dataset.data as number[]).reduce((a: number, b: number) => a + b, 0);
+                            const pct = total ? ((v / total) * 100).toFixed(1) : '0';
+                            return ` ${ctx.label}: $${Number(v).toLocaleString()} (${pct}%)`;
+                          }
+                        }
+                      }
                     }
                   }}
                 />
               </CardContent>
             </Card>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Top vendors by spend</CardTitle>
+                <CardDescription>By provider (approved invoices)</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[340px]">
+                <Bar
+                  data={{
+                    labels: stats?.topVendorsBySpend?.slice(0, 10).map(d => d.name) || [],
+                    datasets: [{
+                      label: 'Spend ($)',
+                      data: stats?.topVendorsBySpend?.slice(0, 10).map(d => d.value) || [],
+                      backgroundColor: 'rgba(99, 102, 241, 0.85)',
+                      borderRadius: 8,
+                      maxBarThickness: 36
+                    }]
+                  }}
+                  options={getCleanChartOptions({ indexAxis: 'y' })}
+                />
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Spend by organization</CardTitle>
+                <CardDescription>Expenditure by entity</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[340px]">
+                <Doughnut
+                  data={{
+                    labels: stats?.spendByOrganization?.slice(0, 10).map(d => d.name) || [],
+                    datasets: [{
+                      data: stats?.spendByOrganization?.slice(0, 10).map(d => d.value) || [],
+                      backgroundColor: CHART_COLORS,
+                      borderWidth: 2,
+                      borderColor: 'hsl(var(--card))',
+                      hoverOffset: 10
+                    }]
+                  }}
+                  options={{ ...getCleanChartOptions(), plugins: { ...getCleanChartOptions().plugins, legend: { position: 'bottom' } } }}
+                />
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Volume & amount by month</CardTitle>
+                <CardDescription>Invoice count and total $ over time</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[340px]">
+                <Bar
+                  data={{
+                    labels: filterDataByTimeFrame(stats?.monthlyInvoiceTrends || [], timeFrame).map(d => d.month),
+                    datasets: [
+                      {
+                        label: 'Count',
+                        data: filterDataByTimeFrame(stats?.monthlyInvoiceTrends || [], timeFrame).map(d => d.invoices),
+                        backgroundColor: '#F59E0B',
+                        borderRadius: 8,
+                        yAxisID: 'y'
+                      },
+                      {
+                        label: 'Amount ($)',
+                        data: filterDataByTimeFrame(stats?.monthlyInvoiceTrends || [], timeFrame).map(d => d.amount),
+                        backgroundColor: '#EA580C',
+                        borderRadius: 8,
+                        yAxisID: 'y1'
+                      }
+                    ]
+                  }}
+                  options={{
+                    ...getCleanChartOptions({ dualAxis: true }),
+                    scales: {
+                      ...getCleanChartOptions().scales,
+                      y: { position: 'left', title: { display: true, text: 'Count' } },
+                      y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Amount ($)' } }
+                    }
+                  }}
+                />
+              </CardContent>
+            </Card>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Monthly invoice spend</CardTitle>
+                <CardDescription>Approved invoice amount by month</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[320px]">
+                <Line
+                  data={{
+                    labels: filterDataByTimeFrame(stats?.monthlySpendData || [], timeFrame).map(d => d.month),
+                    datasets: [{
+                      label: 'Spend ($)',
+                      data: filterDataByTimeFrame(stats?.monthlySpendData || [], timeFrame).map(d => d.spend),
+                      borderColor: '#059669',
+                      backgroundColor: (ctx: any) => {
+                        const chart = ctx.chart;
+                        const { ctx: context } = chart;
+                        const gradient = context.createLinearGradient(0, 0, 0, 300);
+                        gradient.addColorStop(0, 'rgba(5, 150, 105, 0.25)');
+                        gradient.addColorStop(1, 'rgba(5, 150, 105, 0)');
+                        return gradient;
+                      },
+                      fill: true,
+                      tension: 0.35,
+                      pointRadius: 0,
+                      pointHoverRadius: 2,
+                      borderWidth: 2.5
+                    }]
+                  }}
+                  options={getCleanChartOptions()}
+                />
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Invoice count by status</CardTitle>
+                <CardDescription>Pending / approved / rejected (count)</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[320px]">
+                <Doughnut
+                  data={{
+                    labels: stats?.invoiceStatusData?.map(d => d.name) || [],
+                    datasets: [{
+                      data: stats?.invoiceStatusData?.map(d => d.value) || [],
+                      backgroundColor: ['#F59E0B', '#10B981', '#EF4444', '#6B7280'],
+                      borderWidth: 2,
+                      borderColor: 'hsl(var(--card))',
+                      hoverOffset: 10
+                    }]
+                  }}
+                  options={{ ...getCleanChartOptions(), plugins: { ...getCleanChartOptions().plugins, legend: { position: 'bottom' } } }}
+                />
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Spend by invoice category</CardTitle>
+                <CardDescription>Approved invoices by category</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[320px]">
+                <Bar
+                  data={{
+                    labels: stats?.invoiceCategories?.slice(0, 8).map(d => d.name) || [],
+                    datasets: [{
+                      label: 'Spend ($)',
+                      data: stats?.invoiceCategories?.slice(0, 8).map(d => d.value) || [],
+                      backgroundColor: 'rgba(234, 88, 12, 0.9)',
+                      borderRadius: 8,
+                      maxBarThickness: 36
+                    }]
+                  }}
+                  options={getCleanChartOptions()}
+                />
+              </CardContent>
+            </Card>
+          </div>
+          </section>
+        </TabsContent>
 
+        <TabsContent value="assets" className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+          <section className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2 pb-2 border-b border-border">
+                <FiFolder className="text-blue-500" />
+                Assets
+              </h2>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span className="px-3 py-1.5 rounded-lg bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 font-medium">
+                  Total: {stats?.totalAssets ?? 0}
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-medium">
+                  Active: {stats?.activeAssets ?? 0}
+                </span>
+              </div>
+            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <FiFolder className="text-blue-500" /> Asset distribution
+                </CardTitle>
+                <CardDescription>By type</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[360px]">
+                <Pie
+                  data={{
+                    labels: stats?.assetsByType?.map(d => d.name) || [],
+                    datasets: [{
+                      data: stats?.assetsByType?.map(d => d.value) || [],
+                      backgroundColor: CHART_COLORS,
+                      borderWidth: 2,
+                      borderColor: 'hsl(var(--card))',
+                      hoverOffset: 10
+                    }]
+                  }}
+                  options={{ ...getCleanChartOptions(), plugins: { ...getCleanChartOptions().plugins, legend: { position: 'bottom' } } }}
+                />
+              </CardContent>
+            </Card>
             <SummaryCard 
               title="Digital Assets" 
               value={stats?.totalAssets || 0} 
               subtitle={`${stats?.activeAssets || 0} active files & folders`}
               icon={<FiFolder className="text-white" />}
               color="from-indigo-500 to-blue-600"
-              growth="+12.5%"
+              growth="—"
             />
           </div>
-        </TabsContent>
-
-        <TabsContent value="domains" className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <Card className="rounded-3xl border-border shadow-xl hover:shadow-2xl transition-shadow duration-300">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold flex items-center gap-2">
-                  <FiGlobe className="text-emerald-500" /> Domain Registry
-                </CardTitle>
-                <CardDescription>Status distribution of corporate domains</CardDescription>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Active vs inactive assets</CardTitle>
+                <CardDescription>Asset status overview</CardDescription>
               </CardHeader>
-              <CardContent className="h-[400px]">
+              <CardContent className="h-[320px]">
                 <Doughnut
                   data={{
-                    labels: stats?.domainsByStatus?.map(d => d.name),
+                    labels: ['Active', 'Inactive'],
                     datasets: [{
-                      data: stats?.domainsByStatus?.map(d => d.value),
-                      backgroundColor: [CHART_COLORS[1], CHART_COLORS[4], CHART_COLORS[3]],
-                      borderWidth: 0,
-                      cutout: '70%'
+                      data: [stats?.activeAssets ?? 0, Math.max(0, (stats?.totalAssets ?? 0) - (stats?.activeAssets ?? 0))],
+                      backgroundColor: ['#10B981', '#6B7280'],
+                      borderWidth: 2,
+                      borderColor: 'hsl(var(--card))',
+                      hoverOffset: 10
                     }]
                   }}
-                  options={{
-                    ...chartOptions,
-                    plugins: {
-                      ...chartOptions.plugins,
-                      legend: { position: 'bottom', labels: { padding: 25, usePointStyle: true } }
-                    }
-                  }}
+                  options={{ ...getCleanChartOptions(), plugins: { ...getCleanChartOptions().plugins, legend: { position: 'bottom' } } }}
                 />
               </CardContent>
             </Card>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Assets by type</CardTitle>
+                <CardDescription>Count by asset type (bar)</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[320px]">
+                <Bar
+                  data={{
+                    labels: stats?.assetsByType?.map(d => d.name) || [],
+                    datasets: [{
+                      label: 'Count',
+                      data: stats?.assetsByType?.map(d => d.value) || [],
+                      backgroundColor: 'rgba(99, 102, 241, 0.9)',
+                      borderRadius: 8,
+                      maxBarThickness: 40
+                    }]
+                  }}
+                  options={getCleanChartOptions()}
+                />
+              </CardContent>
+            </Card>
+          </div>
+          </section>
+        </TabsContent>
 
+        <TabsContent value="domains" className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+          <section className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2 pb-2 border-b border-border">
+                <FiGlobe className="text-emerald-500" />
+                Domains
+              </h2>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-medium">
+                  Total: {stats?.totalDomains ?? 0}
+                </span>
+                <span className="px-3 py-1.5 rounded-lg bg-teal-500/10 text-teal-700 dark:text-teal-400 font-medium">
+                  Active: {stats?.activeDomains ?? 0}
+                </span>
+              </div>
+            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <FiGlobe className="text-emerald-500" /> Domain status
+                </CardTitle>
+                <CardDescription>Status distribution</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[360px]">
+                <Doughnut
+                  data={{
+                    labels: stats?.domainsByStatus?.map(d => d.name) || [],
+                    datasets: [{
+                      data: stats?.domainsByStatus?.map(d => d.value) || [],
+                      backgroundColor: [CHART_COLORS[1], CHART_COLORS[4], CHART_COLORS[3]],
+                      borderWidth: 2,
+                      borderColor: 'hsl(var(--card))',
+                      hoverOffset: 10
+                    }]
+                  }}
+                  options={{ ...getCleanChartOptions(), plugins: { ...getCleanChartOptions().plugins, legend: { position: 'bottom' } } }}
+                />
+              </CardContent>
+            </Card>
             <SummaryCard 
               title="Registered Domains" 
               value={stats?.totalDomains || 0} 
               subtitle={`${stats?.activeDomains || 0} domains resolving`}
               icon={<FiGlobe className="text-white" />}
               color="from-emerald-600 to-green-700"
-              growth="+3.4%"
+              growth="—"
             />
           </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Active vs inactive domains</CardTitle>
+                <CardDescription>Domain status overview</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[320px]">
+                <Doughnut
+                  data={{
+                    labels: ['Active', 'Inactive'],
+                    datasets: [{
+                      data: [stats?.activeDomains ?? 0, Math.max(0, (stats?.totalDomains ?? 0) - (stats?.activeDomains ?? 0))],
+                      backgroundColor: ['#10B981', '#6B7280'],
+                      borderWidth: 2,
+                      borderColor: 'hsl(var(--card))',
+                      hoverOffset: 10
+                    }]
+                  }}
+                  options={{ ...getCleanChartOptions(), plugins: { ...getCleanChartOptions().plugins, legend: { position: 'bottom' } } }}
+                />
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Domains by status</CardTitle>
+                <CardDescription>Count by status (bar)</CardDescription>
+              </CardHeader>
+              <CardContent className="h-[320px]">
+                <Bar
+                  data={{
+                    labels: stats?.domainsByStatus?.map(d => d.name) || [],
+                    datasets: [{
+                      label: 'Count',
+                      data: stats?.domainsByStatus?.map(d => d.value) || [],
+                      backgroundColor: 'rgba(16, 185, 129, 0.9)',
+                      borderRadius: 8,
+                      maxBarThickness: 40
+                    }]
+                  }}
+                  options={getCleanChartOptions({ indexAxis: 'y' })}
+                />
+              </CardContent>
+            </Card>
+          </div>
+          </section>
         </TabsContent>
 
-          <TabsContent value="resources" className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-            {/* Resources Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <SummaryCard 
-                title="Total Payroll" 
-                value={`$${(stats?.totalPayments || 0).toLocaleString()}`} 
-                subtitle={`For selected ${timeFrame.replace(/(\d+)/, '$1 ')}`}
-                icon={<FiDollarSign className="text-white" />}
-                color="from-purple-600 to-indigo-700"
-                growth="+4.2%"
-              />
-              <SummaryCard 
-                title="Staff Count" 
-                value={stats?.totalEmployees || 0} 
-                subtitle="Active personnel"
-                icon={<FiUsers className="text-white" />}
-                color="from-blue-500 to-cyan-600"
-                growth="+1.5%"
-              />
-              <SummaryCard 
-                title="Avg. Fulfillment" 
-                value={`${stats?.hoursUtilizationData?.length ? Math.round(stats.hoursUtilizationData.reduce((acc, d) => acc + (d.contractHours > 0 ? (d.fulfilledHours / d.contractHours) * 100 : 0), 0) / stats.hoursUtilizationData.length) : 0}%`}
-                subtitle="Hours target achievement"
-                icon={<FiClock className="text-white" />}
-                color="from-emerald-500 to-green-600"
-                growth="+0.8%"
-              />
-              <SummaryCard 
-                title="Contract Capacity" 
-                value={Math.round(stats?.hoursUtilizationData?.reduce((acc, d) => acc + d.contractHours, 0) || 0).toLocaleString()}
-                subtitle="Total monthly hours"
-                icon={<FiActivity className="text-white" />}
-                color="from-orange-500 to-rose-600"
-                growth="-2.1%"
-              />
-            </div>
+          <TabsContent value="resources" className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+            <section className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2 pb-2 border-b border-border">
+                  <FiUsers className="text-violet-500" />
+                  People & payroll
+                </h2>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <span className="px-3 py-1.5 rounded-lg bg-violet-500/10 text-violet-700 dark:text-violet-400 font-medium">
+                    Headcount: {stats?.totalEmployees ?? 0}
+                  </span>
+                  <span className="px-3 py-1.5 rounded-lg bg-purple-500/10 text-purple-700 dark:text-purple-400 font-medium">
+                    Total payroll (period): ${(stats?.totalPayments || 0).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <SummaryCard 
+                  title="Total Payroll" 
+                  value={`$${(stats?.totalPayments || 0).toLocaleString()}`} 
+                  subtitle={`For selected ${timeFrame.replace(/(\d+)/, '$1 ')}`}
+                  icon={<FiDollarSign className="text-white" />}
+                  color="from-purple-600 to-indigo-700"
+                  growth="—"
+                />
+                <SummaryCard 
+                  title="Staff Count" 
+                  value={stats?.totalEmployees || 0} 
+                  subtitle="Active personnel"
+                  icon={<FiUsers className="text-white" />}
+                  color="from-blue-500 to-cyan-600"
+                  growth="—"
+                />
+                <SummaryCard 
+                  title="Avg. Fulfillment" 
+                  value={`${stats?.hoursUtilizationData?.length ? Math.round(stats.hoursUtilizationData.reduce((acc, d) => acc + (d.contractHours > 0 ? (d.fulfilledHours / d.contractHours) * 100 : 0), 0) / stats.hoursUtilizationData.length) : 0}%`}
+                  subtitle="Hours target achievement"
+                  icon={<FiClock className="text-white" />}
+                  color="from-emerald-500 to-green-600"
+                  growth="—"
+                />
+                <SummaryCard 
+                  title="Contract Capacity" 
+                  value={Math.round(stats?.hoursUtilizationData?.reduce((acc, d) => acc + d.contractHours, 0) || 0).toLocaleString()}
+                  subtitle="Total monthly hours"
+                  icon={<FiActivity className="text-white" />}
+                  color="from-orange-500 to-rose-600"
+                  growth="—"
+                />
+              </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <Card className="lg:col-span-2 rounded-3xl border-border shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300">
-                <CardHeader>
-                  <CardTitle className="text-xl font-bold">Human Capital Investment</CardTitle>
-                  <CardDescription>Monthly payroll and contractor disbursements</CardDescription>
-                </CardHeader>
-                <CardContent className="h-[450px]">
-                  <Bar
-                    data={{
-                      labels: stats?.employeeSpendingByMonth?.map(d => d.month),
-                      datasets: [{
-                        label: 'Disbursement Amount',
-                        data: stats?.employeeSpendingByMonth?.map(d => d.amount),
-                        backgroundColor: (context) => {
-                          const ctx = context.chart.ctx;
-                          const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-                          gradient.addColorStop(0, '#8B5CF6');
-                          gradient.addColorStop(1, '#6366F1');
-                          return gradient;
-                        },
-                        borderRadius: 15,
-                        maxBarThickness: 60
-                      }]
-                    }}
-                    options={chartOptions}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="rounded-3xl border-border shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300">
-                <CardHeader>
-                  <CardTitle className="text-xl font-bold flex items-center gap-2">
-                    <FiClock className="text-orange-500" /> Hours Utilization
-                  </CardTitle>
-                  <CardDescription>Average Contract vs Fulfilled hours</CardDescription>
-                </CardHeader>
-                <CardContent className="h-[400px]">
-                  <Bar
-                    data={{
-                      labels: stats?.hoursUtilizationData?.map(d => d.month),
-                      datasets: [
-                        {
-                          label: 'Contract',
-                          data: stats?.hoursUtilizationData?.map(d => d.contractHours),
-                          backgroundColor: '#3B82F6',
-                          borderRadius: 8
-                        },
-                        {
-                          label: 'Fulfilled',
-                          data: stats?.hoursUtilizationData?.map(d => d.fulfilledHours),
-                          backgroundColor: '#10B981',
-                          borderRadius: 8
-                        }
-                      ]
-                    }}
-                    options={chartOptions}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="rounded-3xl border-border shadow-xl hover:shadow-2xl transition-shadow duration-300">
-                <CardHeader>
-                  <CardTitle className="text-xl font-bold flex items-center gap-2">
-                    <FiTrendingUp className="text-emerald-500" /> Fulfillment Trend
-                  </CardTitle>
-                  <CardDescription>Target achievement rate percentage</CardDescription>
-                </CardHeader>
-                <CardContent className="h-[400px]">
-                  <Line
-                    data={{
-                      labels: stats?.hoursUtilizationData?.map(d => d.month),
-                      datasets: [{
-                        label: 'Fulfillment Rate (%)',
-                        data: stats?.hoursUtilizationData?.map(d => d.contractHours > 0 ? (d.fulfilledHours / d.contractHours) * 100 : 0),
-                        borderColor: '#10B981',
-                        borderWidth: 4,
-                        pointBackgroundColor: '#10B981',
-                        pointBorderColor: '#fff',
-                        pointRadius: 6,
-                        fill: true,
-                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                        tension: 0.4
-                      }]
-                    }}
-                    options={{
-                      ...chartOptions,
-                      scales: {
-                        ...chartOptions.scales,
-                        y: {
-                          ...chartOptions.scales.y,
-                          max: 120,
-                          min: 0,
-                          ticks: {
-                            callback: (val) => `${val}%`
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-semibold">Payroll over time</CardTitle>
+                    <CardDescription>Monthly payroll (contractor disbursements)</CardDescription>
+                  </CardHeader>
+                  <CardContent className="h-[360px]">
+                    <Line
+                      data={{
+                        labels: filterDataByTimeFrame(stats?.employeeSpendingByMonth || [], timeFrame).map(d => d.month),
+                        datasets: [{
+                          label: 'Payroll ($)',
+                          data: filterDataByTimeFrame(stats?.employeeSpendingByMonth || [], timeFrame).map(d => d.amount),
+                          borderColor: '#7C3AED',
+                          backgroundColor: 'rgba(124, 58, 237, 0.12)',
+                          fill: true,
+                          tension: 0.35,
+                          pointRadius: 0,
+                          pointHoverRadius: 2,
+                          borderWidth: 2.5
+                        }]
+                      }}
+                      options={getCleanChartOptions()}
+                    />
+                  </CardContent>
+                </Card>
+                <Card className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-semibold flex items-center gap-2">
+                      <FiPieChart className="text-primary" /> Spend by role
+                    </CardTitle>
+                    <CardDescription>Payroll by role (contractor invoices)</CardDescription>
+                  </CardHeader>
+                  <CardContent className="h-[360px]">
+                    <Doughnut
+                      data={{
+                        labels: stats?.roleDistributionData?.map(d => d.name) || [],
+                        datasets: [{
+                          data: stats?.roleDistributionData?.map(d => d.value) || [],
+                          backgroundColor: CHART_COLORS,
+                          borderWidth: 2,
+                          borderColor: 'hsl(var(--card))',
+                          hoverOffset: 10
+                        }]
+                      }}
+                      options={{
+                        ...getCleanChartOptions(),
+                        plugins: {
+                          ...getCleanChartOptions().plugins,
+                          legend: { position: 'bottom' },
+                          tooltip: {
+                            ...getCleanChartOptions().plugins?.tooltip,
+                            callbacks: {
+                              label: (ctx: any) => {
+                                const v = ctx.parsed;
+                                const total = (ctx.dataset.data as number[]).reduce((a: number, b: number) => a + b, 0);
+                                const pct = total ? ((v / total) * 100).toFixed(1) : '0';
+                                return ` ${ctx.label}: $${Number(v).toLocaleString()} (${pct}%)`;
+                              }
+                            }
                           }
                         }
-                      }
-                    }}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="rounded-3xl border-border shadow-xl hover:shadow-2xl transition-shadow duration-300 lg:col-span-2">
-                <CardHeader>
-                  <CardTitle className="text-xl font-bold flex items-center gap-2">
-                    <FiPieChart className="text-primary" /> Spend by Role
-                  </CardTitle>
-                  <CardDescription>Allocation across different job functions</CardDescription>
-                </CardHeader>
-                <CardContent className="h-[400px]">
-                  <Pie
-                    data={{
-                      labels: stats?.roleDistributionData?.map(d => d.name),
-                      datasets: [{
-                        data: stats?.roleDistributionData?.map(d => d.value),
-                        backgroundColor: CHART_COLORS,
-                        borderWidth: 0,
-                        hoverOffset: 15
-                      }]
-                    }}
-                    options={{
-                      ...chartOptions,
-                      plugins: {
-                        ...chartOptions.plugins,
-                        legend: { position: 'right', labels: { padding: 25, usePointStyle: true } }
-                      }
-                    }}
-                  />
-                </CardContent>
-              </Card>
-            </div>
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+            </section>
           </TabsContent>
 
       </Tabs>
@@ -1218,6 +1661,7 @@ type TimeFrame = '1month' | '3months' | '6months' | '1year';
 
 function SummaryCard({ title, value, subtitle, icon, color, growth }) {
   const isPositive = growth?.startsWith('+');
+  const showGrowth = growth != null && growth !== '—' && String(growth).trim() !== '';
   return (
     <Card className="rounded-[2.5rem] border-none shadow-2xl overflow-hidden group hover:-translate-y-2 transition-all duration-500">
       <CardContent className="p-0">
@@ -1236,13 +1680,15 @@ function SummaryCard({ title, value, subtitle, icon, color, growth }) {
           <div className="mt-8 flex items-end justify-between">
             <div className="space-y-1">
               <p className="text-xs font-semibold opacity-70">{subtitle}</p>
-              <div className="flex items-center gap-1.5">
-                 <div className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter bg-white/20 backdrop-blur-md`}>
-                   {isPositive ? <FiTrendingUp className="w-2.5 h-2.5" /> : <FiTrendingDown className="w-2.5 h-2.5" />}
-                   {growth}
-                 </div>
-                 <span className="text-[10px] font-bold opacity-50 uppercase tracking-widest">Growth</span>
-              </div>
+              {showGrowth && (
+                <div className="flex items-center gap-1.5">
+                  <div className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter bg-white/20 backdrop-blur-md`}>
+                    {isPositive ? <FiTrendingUp className="w-2.5 h-2.5" /> : <FiTrendingDown className="w-2.5 h-2.5" />}
+                    {growth}
+                  </div>
+                  <span className="text-[10px] font-bold opacity-50 uppercase tracking-widest">Growth</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

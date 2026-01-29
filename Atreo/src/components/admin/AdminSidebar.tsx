@@ -15,7 +15,8 @@ import {
   FiActivity,
   FiHelpCircle,
   FiPlayCircle,
-  FiKey
+  FiKey,
+  FiMail
 } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import ThemeToggle from '../shared/ThemeToggle';
@@ -88,6 +89,7 @@ export default function AdminSidebar({ activeTab, onTabChange }: AdminSidebarPro
       label: 'Tools',
       items: [
         { id: 'products', label: 'Credentials', icon: FiKey },
+        { id: 'emails', label: 'Emails', icon: FiMail },
         { id: 'invoices', label: 'Invoices', icon: FiFileText },
         { id: 'assets', label: 'Assets', icon: FiFolder }
       ]

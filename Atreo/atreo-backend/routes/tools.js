@@ -184,6 +184,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // Import tools from Excel
+// Query: ?replaceAll=true — delete all existing tools first, then import (avoids "all skipped as duplicates")
 router.post('/import-excel', authenticateToken, uploadExcel.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -194,6 +195,16 @@ router.post('/import-excel', authenticateToken, uploadExcel.single('file'), asyn
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
+    }
+
+    const replaceAll = req.query.replaceAll === 'true' || req.query.replaceAll === '1';
+    if (replaceAll) {
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Admin access required to replace all' });
+      }
+      console.log('[tools/import-excel] replaceAll=true: clearing ToolShare and Tool collections');
+      await ToolShare.deleteMany({});
+      await Tool.deleteMany({});
     }
 
     // Security: Read with safe options to mitigate prototype pollution
@@ -217,24 +228,39 @@ router.post('/import-excel', authenticateToken, uploadExcel.single('file'), asyn
     let successCount = 0;
     let skipCount = 0;
 
+    // Support multiple possible column names (Excel header variations, e.g. Tools_Credentails_Updated)
+    const getRowVal = (row, keys) => {
+      for (const key of keys) {
+        const v = row[key];
+        if (v != null && String(v).trim() !== '' && String(v).trim() !== 'NaN') return String(v).trim();
+      }
+      return '';
+    };
+    const toolNameKeys = ['Tool Name', 'Tools Name', 'Tool name', 'Name', 'ToolName', 'Tool'];
+    const orgKeys = ['Organization Name', 'Company'];
+    const twoFAMethodKeys = ['2FA Method', '2FA Mode'];
+    const paymentInfoKeys = ['Payment Method / Pricing', 'Payment Method (Pricing)'];
+    const paidFreeKeys = ['Paid/Free'];
+
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
-      const toolName = String(row['Tool Name'] || '').trim();
-      if (!toolName || toolName === 'NaN' || toolName === '') {
+      const toolName = getRowVal(row, toolNameKeys);
+      if (!toolName) {
         skipCount++;
         continue;
       }
 
       try {
-        const organizationName = String(row['Organization Name'] || '').trim();
-        const category = String(row['Category'] || '').trim();
-        const description = String(row['Description'] || '').trim();
+        const organizationName = getRowVal(row, orgKeys);
+        const category = String(row['Category'] || '').trim() || undefined;
+        const description = getRowVal(row, ['Description']);
         const username = String(row['Username'] || '').trim();
         const password = String(row['Password'] || '').trim();
         const twoFAEnabled = String(row['2FA Enabled'] || '').trim().toLowerCase();
-        const twoFAMethod = String(row['2FA Method'] || '').trim();
-        const paymentInfo = String(row['Payment Method / Pricing'] || '').trim();
-        const comments = String(row['Comments'] || '').trim();
+        const twoFAMethod = getRowVal(row, twoFAMethodKeys);
+        const paymentInfo = getRowVal(row, paymentInfoKeys);
+        const paidFree = getRowVal(row, paidFreeKeys).toLowerCase();
+        const comments = getRowVal(row, ['Comments']);
 
         let organizationId = null;
         if (organizationName) {
@@ -266,7 +292,7 @@ router.post('/import-excel', authenticateToken, uploadExcel.single('file'), asyn
           continue;
         }
 
-        const has2FA = twoFAEnabled === 'yes' || twoFAEnabled === 'true' || twoFAEnabled === '1';
+        const has2FA = (twoFAEnabled === 'yes' || twoFAEnabled === 'true' || twoFAEnabled === '1') && twoFAEnabled !== 'na' && twoFAEnabled !== 'n/a';
         let twoFactorMethod = null;
         if (has2FA && twoFAMethod) {
           const methodLower = twoFAMethod.toLowerCase();
@@ -275,6 +301,7 @@ router.post('/import-excel', authenticateToken, uploadExcel.single('file'), asyn
         }
 
         let isPaid = false, price = 0, paymentMethod = null, billingPeriod = 'monthly';
+        if (paidFree === 'paid' || paidFree === 'yes' || paidFree === 'true') isPaid = true;
         if (paymentInfo && paymentInfo !== 'NaN' && paymentInfo !== '') {
           isPaid = true;
           const priceMatch = paymentInfo.match(/\$?(\d+\.?\d*)/);
@@ -352,8 +379,14 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Create tool
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { name, description, category, project, department, client, username, password, apiKey, notes, tags, isPaid, hasAutopay, price, billingPeriod, has2FA, twoFactorMethod, status } = req.body;
+    const { name, description, category, project, department, client, username, password, apiKey, notes, tags, isPaid, hasAutopay, price, billingPeriod, has2FA, twoFactorMethod, status, organizationId: organizationIdBody } = req.body;
     if (!name) return res.status(400).json({ message: 'Tool name is required' });
+
+    let organizationId = null;
+    if (organizationIdBody && mongoose.Types.ObjectId.isValid(organizationIdBody)) {
+      const org = await Organization.findById(organizationIdBody);
+      if (org) organizationId = org._id;
+    }
 
     const tool = new Tool({
       name, description, category, project, department, client, username, password, apiKey, notes,
@@ -365,11 +398,13 @@ router.post('/', authenticateToken, async (req, res) => {
       has2FA: has2FA || false,
       twoFactorMethod: has2FA ? (twoFactorMethod || null) : null,
       status: status || 'active',
-      createdBy: req.user.userId
+      createdBy: req.user.userId,
+      organizationId
     });
     
     await tool.save();
     await tool.populate('createdBy', 'name email');
+    await tool.populate('organizationId', 'name');
     
     // Log tool creation
     await logDataChange(
@@ -406,7 +441,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
     // Get old data for change tracking
     const oldTool = tool.toObject();
     
-    const { name, description, category, project, department, client, username, password, apiKey, notes, tags, isPaid, hasAutopay, price, billingPeriod, has2FA, twoFactorMethod, status } = req.body;
+    const { name, description, category, project, department, client, username, password, apiKey, notes, tags, isPaid, hasAutopay, price, billingPeriod, has2FA, twoFactorMethod, status, organizationId: organizationIdBody } = req.body;
     if (name) tool.name = name;
     if (description !== undefined) tool.description = description;
     if (category !== undefined) tool.category = category;
@@ -431,9 +466,18 @@ router.patch('/:id', authenticateToken, async (req, res) => {
     }
     if (twoFactorMethod !== undefined) tool.twoFactorMethod = tool.has2FA ? twoFactorMethod : null;
     if (status !== undefined) tool.status = status;
+    if (organizationIdBody !== undefined) {
+      if (!organizationIdBody || !mongoose.Types.ObjectId.isValid(organizationIdBody)) {
+        tool.organizationId = null;
+      } else {
+        const org = await Organization.findById(organizationIdBody);
+        tool.organizationId = org ? org._id : null;
+      }
+    }
     
     await tool.save();
     await tool.populate('createdBy', 'name email');
+    await tool.populate('organizationId', 'name');
     
     // Log tool update with change tracking
     const newTool = tool.toObject();

@@ -56,7 +56,7 @@ export default function AdminEmails() {
     try {
       setLoading(true);
       const data = await apiClient.getEmails();
-      setEmails(data);
+      setEmails(Array.isArray(data) ? data : []);
     } catch (error: any) {
       logger.error('Error loading emails:', error);
       showToast('Failed to load emails', 'error');

@@ -42,33 +42,78 @@ function decrypt(text) {
 
 /**
  * GET /api/credentials
- * Get all credentials (passwords encrypted)
+ * Get all credentials (passwords encrypted) with optional filters
+ * Query params: page, limit, isPaid (true|false), status (active|inactive), category, paymentMethod, billingPeriod, search
  */
 router.get('/', validatePagination, requireModuleAccess('credentials'), async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    
-    const tools = await Tool.find({})
-      .select('name category credentials.username credentials.apiKey notes tags')
+
+    // Build filter query
+    const query = {};
+
+    // Paid / Unpaid filter
+    if (req.query.isPaid !== undefined && req.query.isPaid !== '') {
+      const isPaid = req.query.isPaid === 'true' || req.query.isPaid === true;
+      query.isPaid = isPaid;
+    }
+
+    // Status filter (active / inactive)
+    if (req.query.status && ['active', 'inactive'].includes(req.query.status)) {
+      query.status = req.query.status;
+    }
+
+    // Category filter (exact match)
+    if (req.query.category && req.query.category.trim()) {
+      query.category = new RegExp('^' + req.query.category.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i');
+    }
+
+    // Payment method filter
+    if (req.query.paymentMethod && ['card', 'bank', 'paypal', 'other'].includes(req.query.paymentMethod)) {
+      query.paymentMethod = req.query.paymentMethod;
+    }
+
+    // Billing period filter
+    if (req.query.billingPeriod && ['monthly', 'yearly'].includes(req.query.billingPeriod)) {
+      query.billingPeriod = req.query.billingPeriod;
+    }
+
+    // Search (name or notes)
+    if (req.query.search && req.query.search.trim()) {
+      const searchTerm = req.query.search.trim();
+      query.$or = [
+        { name: { $regex: searchTerm, $options: 'i' } },
+        { notes: { $regex: searchTerm, $options: 'i' } },
+        { category: { $regex: searchTerm, $options: 'i' } }
+      ];
+    }
+
+    const tools = await Tool.find(query)
+      .select('name category username credentials notes tags isPaid status paymentMethod billingPeriod price')
       .skip(skip)
       .limit(limit)
       .sort({ name: 1 });
-    
-    // Transform tools to credentials format (don't decrypt passwords in list view)
+
+    // Transform tools to credentials format (support both nested credentials and top-level fields)
     const credentials = tools.map(tool => ({
       id: tool._id,
       name: tool.name,
       service: tool.category,
-      username: tool.credentials?.username || '',
-      apiKey: tool.credentials?.apiKey ? '••••••••••••' : '', // Masked
+      username: tool.credentials?.username || tool.username || '',
+      apiKey: (tool.credentials?.apiKey || tool.apiKey) ? '••••••••••••' : '', // Masked
       notes: tool.notes || '',
-      tags: tool.tags || []
+      tags: tool.tags || [],
+      isPaid: tool.isPaid,
+      status: tool.status,
+      paymentMethod: tool.paymentMethod,
+      billingPeriod: tool.billingPeriod,
+      price: tool.price
     }));
-    
-    const total = await Tool.countDocuments({});
-    
+
+    const total = await Tool.countDocuments(query);
+
     res.json({
       credentials,
       pagination: {

@@ -73,7 +73,12 @@ router.get('/stats', async (req, res) => {
       activeDomains,
       domainsByStatus,
       spendByOrganization,
-      monthlyPaymentsDataRaw
+      monthlyPaymentsDataRaw,
+      // Accountant-focused: invoice status BY AMOUNT (not count)
+      invoiceStatusByAmountRaw,
+      overdueInvoicesAmountRaw,
+      topVendorsBySpendRaw,
+      invoiceCategoriesRaw
     ] = await Promise.all([
       User.countDocuments(),
       Employee.countDocuments({ status: 'active' }),
@@ -296,6 +301,69 @@ router.get('/stats', async (req, res) => {
             }
           },
           { $sort: { sortDate: 1 } }
+        ]),
+        // Invoice status BY AMOUNT (for accountant: $ pending, approved, rejected)
+        Invoice.aggregate([
+          {
+            $match: {
+              $or: [
+                { 'notes.type': { $ne: 'employee_contractor' } },
+                { 'notes.type': { $exists: false } },
+                { notes: null }
+              ]
+            }
+          },
+          { $group: { _id: '$status', value: { $sum: '$amount' } } },
+          { $project: { name: '$_id', value: 1, _id: 0 } }
+        ]),
+        // Overdue amount: approved invoices with dueDate < today
+        Invoice.aggregate([
+          {
+            $match: {
+              status: 'approved',
+              dueDate: { $lt: now, $ne: null },
+              $or: [
+                { 'notes.type': { $ne: 'employee_contractor' } },
+                { 'notes.type': { $exists: false } },
+                { notes: null }
+              ]
+            }
+          },
+          { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]),
+        // Top vendors by spend (approved invoices, by provider)
+        Invoice.aggregate([
+          {
+            $match: {
+              status: 'approved',
+              $or: [
+                { 'notes.type': { $ne: 'employee_contractor' } },
+                { 'notes.type': { $exists: false } },
+                { notes: null }
+              ]
+            }
+          },
+          { $group: { _id: '$provider', value: { $sum: '$amount' } } },
+          { $project: { name: { $ifNull: ['$_id', 'Unknown'] }, value: 1, _id: 0 } },
+          { $sort: { value: -1 } },
+          { $limit: 10 }
+        ]),
+        // Spend by invoice category (approved invoices)
+        Invoice.aggregate([
+          {
+            $match: {
+              status: 'approved',
+              $or: [
+                { 'notes.type': { $ne: 'employee_contractor' } },
+                { 'notes.type': { $exists: false } },
+                { notes: null }
+              ]
+            }
+          },
+          { $group: { _id: '$category', value: { $sum: '$amount' } } },
+          { $project: { name: { $ifNull: ['$_id', 'Uncategorized'] }, value: 1, _id: 0 } },
+          { $sort: { value: -1 } },
+          { $limit: 12 }
         ])
       ]);
 
@@ -372,6 +440,8 @@ router.get('/stats', async (req, res) => {
       }
     });
 
+    const overdueInvoicesAmount = overdueInvoicesAmountRaw.length > 0 ? overdueInvoicesAmountRaw[0].total : 0;
+
     const stats = {
       totalUsers,
       totalEmployees,
@@ -393,6 +463,10 @@ router.get('/stats', async (req, res) => {
         monthlySpend: t.billingPeriod === 'yearly' ? t.price / 12 : t.price
       })),
       invoiceStatusData,
+      invoiceStatusByAmount: invoiceStatusByAmountRaw || [],
+      overdueInvoicesAmount,
+      topVendorsBySpend: topVendorsBySpendRaw || [],
+      invoiceCategories: invoiceCategoriesRaw || [],
       monthlyInvoiceTrends,
       employeeSpendingByMonth,
       roleDistributionData,
